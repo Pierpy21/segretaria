@@ -25,7 +25,7 @@ export default function Sidebar({ navLinks, activeNav, setActiveNav }: SidebarPr
             <Bot size={15} className="text-white" />
           </div>
           <span className="text-white font-bold text-lg tracking-tight">
-            Segret<span className="text-blue-400">IA</span>
+            Segretar<span className="text-blue-400">IA</span>
           </span>
         </div>
         <p className="text-[11px] mt-1.5 font-medium tracking-wide uppercase text-slate-500">

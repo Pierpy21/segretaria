@@ -10,6 +10,9 @@ import MaintenanceBoard from "./components/maintenance-board";
 import QuotesTable from "./components/quotas-table";
 import PerformanceStats from "./components/performance-stats";
 import MessagingPage, { Message } from "./components/modules/messaging-page";
+import CalendarPage from "./components/modules/calendar-page";
+import QuotesPage from "./components/modules/quotes-page";
+import MaintenancePage from "./components/modules/maintenance-page";
 import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3 } from "lucide-react";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -64,6 +67,9 @@ const conversations: Record<number, Message[]> = {
 const pageHeadings: Record<string, { title: string; subtitle: string }> = {
   "Dashboard": { title: "Dashboard Overview", subtitle: "Wednesday, 1 July 2026 — Good morning, Carlo" },
   "Messaging & WhatsApp Hub": { title: "Messaging & WhatsApp Hub", subtitle: "Gestisci le conversazioni ricevute via Evolution API" },
+  "Calendar & Reminders": { title: "Calendar & Reminders", subtitle: "Vista mensile, settimanale e giornaliera con sync Google/Apple" },
+  "Quotes & Requests": { title: "Quotes & Requests", subtitle: "Gestisci preventivi e richieste di servizio da clienti" },
+  "Maintenance & Tasks": { title: "Maintenance & Tasks", subtitle: "Kanban board con task generati da AI e manuali" },
 };
 
 const weekDays = [
@@ -210,6 +216,12 @@ export default function App() {
             </>
           ) : activeNav === "Messaging & WhatsApp Hub" ? (
             <MessagingPage chats={chatMessages} conversations={conversations} />
+          ) : activeNav === "Calendar & Reminders" ? (
+            <CalendarPage />
+          ) : activeNav === "Quotes & Requests" ? (
+            <QuotesPage />
+          ) : activeNav === "Maintenance & Tasks" ? (
+            <MaintenancePage />
           ) : (
             <ComingSoon label={activeNav} />
           )}
