@@ -9,7 +9,8 @@ import CalendarWidget from "./components/calendar-widget";
 import MaintenanceBoard from "./components/maintenance-board";
 import QuotesTable from "./components/quotas-table";
 import PerformanceStats from "./components/performance-stats";
-import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot } from "lucide-react";
+import MessagingPage, { Message } from "./components/modules/messaging-page";
+import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3 } from "lucide-react";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,34 @@ const chatMessages = [
   { id: 4, name: "Sofia Romano", snippet: "Posso fissare un appuntamento per...", time: "2h", unread: 0, ai: false, initials: "SR", color: "#f59e0b" },
   { id: 5, name: "Andrea Marino", snippet: "Conferma appuntamento domani alle 9", time: "3h", unread: 0, ai: true, initials: "AM", color: "#ef4444" },
 ];
+
+const conversations: Record<number, Message[]> = {
+  1: [
+    { id: 1, from: "contact", text: "Ho bisogno di un idraulico urgente...", time: "09:12" },
+    { id: 2, from: "ai-draft", text: "Buongiorno Marco! Ho verificato la disponibilità: possiamo mandare un tecnico oggi alle 16:00. Confermi l'appuntamento?", time: "09:13" },
+  ],
+  2: [
+    { id: 1, from: "contact", text: "Quando è disponibile per giovedì?", time: "08:40" },
+    { id: 2, from: "ai-draft", text: "Buongiorno Giulia! Abbiamo disponibilità giovedì alle 10:00 o alle 15:30. Quale preferisce?", time: "08:41" },
+  ],
+  3: [
+    { id: 1, from: "user", text: "Ecco il preventivo richiesto, mi faccia sapere.", time: "1h" },
+    { id: 2, from: "contact", text: "Grazie per il preventivo ricevuto!", time: "1h" },
+  ],
+  4: [
+    { id: 1, from: "contact", text: "Posso fissare un appuntamento per la prossima settimana?", time: "2h" },
+    { id: 2, from: "user", text: "Certo Sofia, che giorno preferisce?", time: "2h" },
+  ],
+  5: [
+    { id: 1, from: "user", text: "Le confermo l'appuntamento di domani alle 9:00.", time: "3h" },
+    { id: 2, from: "contact", text: "Conferma appuntamento domani alle 9", time: "3h" },
+  ],
+};
+
+const pageHeadings: Record<string, { title: string; subtitle: string }> = {
+  "Dashboard": { title: "Dashboard Overview", subtitle: "Wednesday, 1 July 2026 — Good morning, Carlo" },
+  "Messaging & WhatsApp Hub": { title: "Messaging & WhatsApp Hub", subtitle: "Gestisci le conversazioni ricevute via Evolution API" },
+};
 
 const weekDays = [
   {
@@ -122,12 +151,25 @@ const priorityColor: Record<string, string> = {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <div className="flex-1 h-[calc(100vh-190px)] bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center gap-3">
+      <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-50">
+        <Clock3 size={20} className="text-blue-500" />
+      </div>
+      <p className="text-sm font-semibold text-slate-900">{label}</p>
+      <p className="text-xs text-slate-500">Presto disponibile</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeNav, setActiveNav] = useState("Dashboard");
+  const { title, subtitle } = pageHeadings[activeNav] ?? { title: activeNav, subtitle: "Presto disponibile" };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
-      
+
       {/* ══ SIDEBAR ══ */}
       <Sidebar navLinks={navLinks} activeNav={activeNav} setActiveNav={setActiveNav} />
 
@@ -142,27 +184,35 @@ export default function App() {
 
           {/* Page Heading */}
           <div>
-            <h1 className="text-lg font-bold text-slate-900">Dashboard Overview</h1>
-            <p className="text-xs text-slate-500">Wednesday, 1 July 2026 — Good morning, Carlo</p>
+            <h1 className="text-lg font-bold text-slate-900">{title}</h1>
+            <p className="text-xs text-slate-500">{subtitle}</p>
           </div>
 
-          {/* ── KPI CARDS ── */}
-          <KpiCards data={kpis} />
+          {activeNav === "Dashboard" ? (
+            <>
+              {/* ── KPI CARDS ── */}
+              <KpiCards data={kpis} />
 
-          {/* ── ROW 2: MESSAGING + CALENDAR ── */}
-          <div className="grid grid-cols-2 gap-4">
-            <MessagingHub chats={chatMessages} />
-            <CalendarWidget weekDays={weekDays} reminders={reminders} priorityColor={priorityColor} />
-          </div>
+              {/* ── ROW 2: MESSAGING + CALENDAR ── */}
+              <div className="grid grid-cols-2 gap-4">
+                <MessagingHub chats={chatMessages} />
+                <CalendarWidget weekDays={weekDays} reminders={reminders} priorityColor={priorityColor} />
+              </div>
 
-          {/* ── ROW 3: KANBAN + QUOTES ── */}
-          <div className="grid grid-cols-2 gap-4">
-            <MaintenanceBoard boardData={kanban} priorityColor={priorityColor} />
-            <QuotesTable data={quotes} statusMap={statusMap} />
-          </div>
+              {/* ── ROW 3: KANBAN + QUOTES ── */}
+              <div className="grid grid-cols-2 gap-4">
+                <MaintenanceBoard boardData={kanban} priorityColor={priorityColor} />
+                <QuotesTable data={quotes} statusMap={statusMap} />
+              </div>
 
-          {/* ── ROW 4: AI PERFORMANCE ── */}
-          <PerformanceStats />
+              {/* ── ROW 4: AI PERFORMANCE ── */}
+              <PerformanceStats />
+            </>
+          ) : activeNav === "Messaging & WhatsApp Hub" ? (
+            <MessagingPage chats={chatMessages} conversations={conversations} />
+          ) : (
+            <ComingSoon label={activeNav} />
+          )}
 
           {/* Bottom Spacer */}
           <div className="h-2" />
