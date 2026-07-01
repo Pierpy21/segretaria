@@ -2,20 +2,10 @@
 
 import { useState } from "react";
 import { Bot, MessageSquare } from "lucide-react";
-
-interface ChatMessage {
-  id: number;
-  name: string;
-  snippet: string;
-  time: string;
-  unread: number;
-  ai: boolean;
-  initials: string;
-  color: string;
-}
+import type { ChatListItem } from "@/app/types/messaging";
 
 interface MessagingHubProps {
-  chats: ChatMessage[];
+  chats: ChatListItem[];
 }
 
 export default function MessagingHub({ chats }: MessagingHubProps) {

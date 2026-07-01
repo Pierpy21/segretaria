@@ -9,11 +9,16 @@ import CalendarWidget from "./components/calendar-widget";
 import MaintenanceBoard from "./components/maintenance-board";
 import QuotesTable from "./components/quotas-table";
 import PerformanceStats from "./components/performance-stats";
-import MessagingPage, { Message } from "./components/modules/messaging-page";
+import MessagingPage from "./components/modules/messaging-page";
 import CalendarPage from "./components/modules/calendar-page";
 import QuotesPage from "./components/modules/quotes-page";
 import MaintenancePage from "./components/modules/maintenance-page";
 import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3 } from "lucide-react";
+import { INITIAL_QUOTES } from "@/app/data/quotes";
+import { STATUS_META } from "@/app/constants/quotes";
+import { INITIAL_CHAT_MESSAGES, INITIAL_CONVERSATIONS } from "@/app/data/messaging";
+import { INITIAL_COLUMNS } from "@/app/data/maintenance";
+import { PRIORITY_COLOR as CALENDAR_PRIORITY_COLOR } from "@/app/data/calendar";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -33,36 +38,8 @@ const kpis = [
   { label: "Open Quotes", value: "7", sub: "+3 this week", up: true, icon: FileText, accent: "#8b5cf6", spark: [3, 5, 4, 6, 5, 7] },
 ];
 
-const chatMessages = [
-  { id: 1, name: "Marco Rossi", snippet: "Ho bisogno di un idraulico urgente...", time: "2m", unread: 3, ai: true, initials: "MR", color: "#3b82f6" },
-  { id: 2, name: "Giulia Ferrari", snippet: "Quando è disponibile per giovedì?", time: "15m", unread: 1, ai: true, initials: "GF", color: "#0d9488" },
-  { id: 3, name: "Luca Esposito", snippet: "Grazie per il preventivo ricevuto!", time: "1h", unread: 0, ai: false, initials: "LE", color: "#8b5cf6" },
-  { id: 4, name: "Sofia Romano", snippet: "Posso fissare un appuntamento per...", time: "2h", unread: 0, ai: false, initials: "SR", color: "#f59e0b" },
-  { id: 5, name: "Andrea Marino", snippet: "Conferma appuntamento domani alle 9", time: "3h", unread: 0, ai: true, initials: "AM", color: "#ef4444" },
-];
-
-const conversations: Record<number, Message[]> = {
-  1: [
-    { id: 1, from: "contact", text: "Ho bisogno di un idraulico urgente...", time: "09:12" },
-    { id: 2, from: "ai-draft", text: "Buongiorno Marco! Ho verificato la disponibilità: possiamo mandare un tecnico oggi alle 16:00. Confermi l'appuntamento?", time: "09:13" },
-  ],
-  2: [
-    { id: 1, from: "contact", text: "Quando è disponibile per giovedì?", time: "08:40" },
-    { id: 2, from: "ai-draft", text: "Buongiorno Giulia! Abbiamo disponibilità giovedì alle 10:00 o alle 15:30. Quale preferisce?", time: "08:41" },
-  ],
-  3: [
-    { id: 1, from: "user", text: "Ecco il preventivo richiesto, mi faccia sapere.", time: "1h" },
-    { id: 2, from: "contact", text: "Grazie per il preventivo ricevuto!", time: "1h" },
-  ],
-  4: [
-    { id: 1, from: "contact", text: "Posso fissare un appuntamento per la prossima settimana?", time: "2h" },
-    { id: 2, from: "user", text: "Certo Sofia, che giorno preferisce?", time: "2h" },
-  ],
-  5: [
-    { id: 1, from: "user", text: "Le confermo l'appuntamento di domani alle 9:00.", time: "3h" },
-    { id: 2, from: "contact", text: "Conferma appuntamento domani alle 9", time: "3h" },
-  ],
-};
+const chatMessages = INITIAL_CHAT_MESSAGES;
+const conversations = INITIAL_CONVERSATIONS;
 
 const pageHeadings: Record<string, { title: string; subtitle: string }> = {
   "Dashboard": { title: "Dashboard Overview", subtitle: "Wednesday, 1 July 2026 — Good morning, Carlo" },
@@ -110,50 +87,19 @@ const reminders = [
   { text: "Annual boiler inspection reminder", time: "15:30", priority: "low" },
 ];
 
-const kanban = [
-  {
-    col: "To Do", accent: "#94a3b8", bg: "#f8fafc",
-    tasks: [
-      { title: "Follow up: Marco plumbing request", priority: "high", ai: true },
-      { title: "Send invoice reminder — Client #47", priority: "medium", ai: false },
-      { title: "Schedule annual boiler inspection", priority: "low", ai: true },
-    ],
-  },
-  {
-    col: "In Progress", accent: "#3b82f6", bg: "#eff6ff",
-    tasks: [
-      { title: "Prepare quote — bathroom renovation", priority: "high", ai: false },
-      { title: "Coordinate electrician — Via Roma 14", priority: "medium", ai: true },
-    ],
-  },
-  {
-    col: "Done", accent: "#10b981", bg: "#f0fdf4",
-    tasks: [
-      { title: "Book appointment: Bianchi — Jul 2", priority: "low", ai: true },
-      { title: "Confirm: Ferrarese family visit", priority: "low", ai: true },
-    ],
-  },
-];
+const kanban = INITIAL_COLUMNS.map(col => ({
+  col: col.name,
+  accent: col.accent,
+  bg: col.bg,
+  tasks: col.tasks.map(({ title, priority, ai }) => ({ title, priority, ai })),
+}));
 
-const quotes = [
-  { id: "Q-001", client: "Anna Bianchi", type: "Plumber", date: "Jul 1, 2026", status: "pending_ai", amount: "€280" },
-  { id: "Q-002", client: "Roberto Conti", type: "Electrician", date: "Jun 30, 2026", status: "quote_sent", amount: "€450" },
-  { id: "Q-003", client: "Maria Greco", type: "Carpenter", date: "Jun 29, 2026", status: "approved", amount: "€1,200" },
-  { id: "Q-004", client: "Paolo Mancini", type: "Plumber", date: "Jun 28, 2026", status: "pending_ai", amount: "€160" },
-  { id: "Q-005", client: "Elena Vitali", type: "Painter", date: "Jun 27, 2026", status: "quote_sent", amount: "€820" },
-];
+const quotes = INITIAL_QUOTES.slice(0, 5);
+const statusMap = Object.fromEntries(
+  Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
+);
 
-const statusMap: Record<string, { label: string; bg: string; text: string }> = {
-  pending_ai: { label: "Pending AI Review", bg: "#fef9c3", text: "#854d0e" },
-  quote_sent: { label: "Quote Sent", bg: "#dbeafe", text: "#1e40af" },
-  approved: { label: "Approved", bg: "#dcfce7", text: "#166534" },
-};
-
-const priorityColor: Record<string, string> = {
-  high: "#ef4444",
-  medium: "#f59e0b",
-  low: "#10b981",
-};
+const priorityColor = CALENDAR_PRIORITY_COLOR;
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -208,8 +154,12 @@ export default function App() {
               {/* ── ROW 3: KANBAN + QUOTES ── */}
               <div className="grid grid-cols-2 gap-4">
                 <MaintenanceBoard boardData={kanban} priorityColor={priorityColor} />
-                <QuotesTable data={quotes} statusMap={statusMap} />
-              </div>
+                <QuotesTable 
+  data={quotes} 
+  statusMap={statusMap} 
+  onView={() => setActiveNav("Quotes & Requests")} 
+  onEdit={() => setActiveNav("Quotes & Requests")}
+/></div>
 
               {/* ── ROW 4: AI PERFORMANCE ── */}
               <PerformanceStats />

@@ -1,39 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X, Eye, Check, XCircle, Download, Send, Bot, FileText } from "lucide-react";
-
-type QuoteStatus = "pending_ai" | "quote_sent" | "approved" | "declined";
-
-interface Quote {
-  id: string;
-  client: string;
-  type: string;
-  date: string;
-  status: QuoteStatus;
-  amount: string;
-  description: string;
-  isAiGenerated: boolean;
-}
-
-// ─── Mock data ──────────────────────────────────────────────────────────────
-
-const INITIAL_QUOTES: Quote[] = [
-  { id: "Q-001", client: "Anna Bianchi", type: "Plumber", date: "Jul 1, 2026", status: "pending_ai", amount: "€280", description: "Emergency pipe repair, bathroom sink.", isAiGenerated: true },
-  { id: "Q-002", client: "Roberto Conti", type: "Electrician", date: "Jun 30, 2026", status: "quote_sent", amount: "€450", description: "Electrical rewiring, 3rd floor apartment, Via Roma 14.", isAiGenerated: false },
-  { id: "Q-003", client: "Maria Greco", type: "Carpenter", date: "Jun 29, 2026", status: "approved", amount: "€1,200", description: "Custom shelving unit, oak wood, living room.", isAiGenerated: false },
-  { id: "Q-004", client: "Paolo Mancini", type: "Plumber", date: "Jun 28, 2026", status: "pending_ai", amount: "€160", description: "Faucet replacement, kitchen sink, quick job.", isAiGenerated: true },
-  { id: "Q-005", client: "Elena Vitali", type: "Painter", date: "Jun 27, 2026", status: "quote_sent", amount: "€820", description: "Interior wall painting, 2 bedrooms, matte finish.", isAiGenerated: false },
-  { id: "Q-006", client: "Francesca Rossi", type: "Plumber", date: "Jun 26, 2026", status: "pending_ai", amount: "€520", description: "Hot water tank installation and setup.", isAiGenerated: true },
-  { id: "Q-007", client: "Giancarlo Bianchi", type: "Carpenter", date: "Jun 25, 2026", status: "approved", amount: "€2,100", description: "Kitchen cabinet design and installation, custom hardware.", isAiGenerated: false },
-];
-
-const STATUS_META: Record<QuoteStatus, { label: string; bg: string; text: string; icon: typeof Check }> = {
-  pending_ai: { label: "Pending AI Review", bg: "#fef9c3", text: "#854d0e", icon: FileText },
-  quote_sent: { label: "Quote Sent", bg: "#dbeafe", text: "#1e40af", icon: Send },
-  approved: { label: "Approved", bg: "#dcfce7", text: "#166534", icon: Check },
-  declined: { label: "Declined", bg: "#fee2e2", text: "#991b1b", icon: XCircle },
-};
+import { Plus, X, Check, XCircle, Download } from "lucide-react";
+import QuotesTable from "@/app/components/quotas-table";
+import { Quote, QuoteStatus } from "@/app/types/quotes";
+import { STATUS_META } from "@/app/constants/quotes";
+import { INITIAL_QUOTES } from "@/app/data/quotes";
 
 let nextQuoteId = INITIAL_QUOTES.length + 1;
 
@@ -124,57 +96,40 @@ export default function QuotesPage() {
           </div>
         </div>
 
-        {/* Quotes list */}
-        <div className="space-y-2">
-          {filtered.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-              <p className="text-sm text-slate-400">Nessun preventivo per questo filtro.</p>
-            </div>
-          ) : (
-            filtered.map(quote => {
-              const meta = STATUS_META[quote.status];
-              const Icon = meta.icon;
-              return (
-                <button
-                  key={quote.id}
-                  onClick={() => setSelectedQuote(quote)}
-                  className={`w-full bg-white rounded-2xl border transition-colors text-left
-                    ${selectedQuote?.id === quote.id ? "border-blue-400 bg-blue-50/40" : "border-slate-200 hover:border-slate-300"}`}
-                >
-                  <div className="p-4 flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: meta.bg, color: meta.text }}
-                    >
-                      <Icon size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <p className="text-sm font-semibold text-slate-900">{quote.client}</p>
-                        {quote.isAiGenerated && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                            <Bot size={8} /> AI
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-xs text-slate-500">{quote.type}</p>
-                        <span className="text-xs font-semibold" style={{ color: meta.text }}>
-                          {meta.label}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 truncate">{quote.description}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-slate-900">{quote.amount}</p>
-                      <p className="text-[10px] text-slate-400">{quote.date}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
+        {/* Quotes table */}
+        {filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+            <p className="text-sm text-slate-400">Nessun preventivo per questo filtro.</p>
+          </div>
+        ) : (
+          <QuotesTable
+            data={filtered as any}
+            statusMap={Object.fromEntries(
+              Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
+            )}
+            // 1. Il tasto "Occhio" apre la sidebar laterale (esattamente come prima)
+            onView={(item) => setSelectedQuote(item as Quote)} 
+            
+            // 2. Il tasto "Matita" esegue una funzione diversa
+            onEdit={(item) => {
+              const quote = item as Quote;
+              
+              // Esempio pratico: precompila il form che già hai e apri il modale
+              setForm({ 
+                client: quote.client, 
+                type: quote.type, 
+                amount: quote.amount.replace("€", ""), // Rimuove l'euro per pulizia nell'input
+                description: quote.description 
+              });
+              
+              setShowNewModal(true);
+              
+              // (Nota: per far funzionare il salvataggio della modifica dovrai 
+              // poi gestire la differenza tra "creare un nuovo preventivo" e 
+              // "aggiornarne uno esistente" nella funzione submitNewQuote)
+            }}
+          />
+        )}
       </div>
 
       {/* ── Sidebar ── */}

@@ -1,5 +1,6 @@
 import { Filter, Eye, Pencil } from "lucide-react";
 
+// Interfaccia per il singolo elemento della tabella
 interface QuoteItem {
   id: string;
   client: string;
@@ -9,12 +10,15 @@ interface QuoteItem {
   amount: string;
 }
 
+// Interfaccia per le Props del componente
 interface QuotesTableProps {
   data: QuoteItem[];
   statusMap: Record<string, { label: string; bg: string; text: string }>;
+  onView?: (item: QuoteItem) => void; // Funzione per il tasto "Preview"
+  onEdit?: (item: QuoteItem) => void; // Funzione per il tasto "Edit"
 }
 
-export default function QuotesTable({ data, statusMap }: QuotesTableProps) {
+export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesTableProps) {
   return (
     <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
       {/* Header */}
@@ -72,10 +76,21 @@ export default function QuotesTable({ data, statusMap }: QuotesTableProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
-                      <button className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors" title="Preview">
+                      {/* Pulsante di View (Occhio) */}
+                      <button
+                        onClick={() => onView?.(q)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                        title="Preview"
+                      >
                         <Eye size={12} />
                       </button>
-                      <button className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors" title="Edit">
+                      
+                      {/* Pulsante di Edit (Matita) */}
+                      <button
+                        onClick={() => onEdit?.(q)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                        title="Edit"
+                      >
                         <Pencil size={12} />
                       </button>
                     </div>

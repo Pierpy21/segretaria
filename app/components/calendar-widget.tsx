@@ -1,26 +1,10 @@
-interface CalendarEvent {
-  title: string;
-  time: string;
-  color: string;
-}
-
-interface WeekDay {
-  day: string;
-  date: string;
-  today: boolean;
-  events: CalendarEvent[];
-}
-
-interface ReminderItem {
-  text: string;
-  time: string;
-  priority: string;
-}
+import type { CalendarEvent, WeekDay, ReminderItem } from "@/app/types/calendar";
+import type { ReminderPriority } from "@/app/types/calendar";
 
 interface CalendarWidgetProps {
   weekDays: WeekDay[];
   reminders: ReminderItem[];
-  priorityColor: Record<string, string>;
+  priorityColor: Record<ReminderPriority, string>;
 }
 
 export default function CalendarWidget({ weekDays, reminders, priorityColor }: CalendarWidgetProps) {

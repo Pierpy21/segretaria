@@ -2,24 +2,7 @@
 
 import { useState } from "react";
 import { Bot, Search, Send, Check, X, Sparkles } from "lucide-react";
-
-export interface ChatListItem {
-  id: number;
-  name: string;
-  snippet: string;
-  time: string;
-  unread: number;
-  ai: boolean;
-  initials: string;
-  color: string;
-}
-
-export interface Message {
-  id: number;
-  from: "contact" | "user" | "ai-draft";
-  text: string;
-  time: string;
-}
+import type { ChatListItem, Message } from "@/app/types/messaging";
 
 interface MessagingPageProps {
   chats: ChatListItem[];

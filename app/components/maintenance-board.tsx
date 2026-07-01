@@ -1,21 +1,16 @@
 import { Bot, User } from "lucide-react";
-
-interface Task {
-  title: string;
-  priority: string;
-  ai: boolean;
-}
+import type { Task, TaskPriority } from "@/app/types/maintenance";
 
 interface KanbanColumn {
   col: string;
   accent: string;
   bg: string;
-  tasks: Task[];
+  tasks: Omit<Task, "id" | "description" | "assignedTo">[];
 }
 
 interface MaintenanceBoardProps {
   boardData: KanbanColumn[];
-  priorityColor: Record<string, string>;
+  priorityColor: Record<TaskPriority, string>;
 }
 
 export default function MaintenanceBoard({ boardData, priorityColor }: MaintenanceBoardProps) {
