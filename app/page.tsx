@@ -18,7 +18,7 @@ import { INITIAL_QUOTES } from "@/app/data/quotes";
 import { STATUS_META } from "@/app/constants/quotes";
 import { INITIAL_CHAT_MESSAGES, INITIAL_CONVERSATIONS } from "@/app/data/messaging";
 import { INITIAL_COLUMNS } from "@/app/data/maintenance";
-import { PRIORITY_COLOR as CALENDAR_PRIORITY_COLOR } from "@/app/data/calendar";
+import { PRIORITY_COLOR as CALENDAR_PRIORITY_COLOR } from "@/app/constants/calendar";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
