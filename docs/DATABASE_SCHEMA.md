@@ -9,13 +9,13 @@
 ## Indice
 
 1. [Panoramica Architetturale](#1-panoramica-architetturale)
-2. [⚠️ Vendor Lock-in e Assenza di ORM — Problema Critico](#2-️-vendor-lock-in-e-assenza-di-orm--problema-critico)
+2. [⚠️ Vendor Lock-in e Assenza di ORM — Problema Critico]       (#2-️-vendor-lock-in-e-assenza-di-orm--problema-critico)
 3. [File di Migrazione SQL](#3-file-di-migrazione-sql)
    - [Sezione 0 — Estensioni](#sezione-0--estensioni)
    - [Sezione 1 — Funzione Helper `set_updated_at()`](#sezione-1--funzione-helper-set_updated_at)
    - [Sezione 2 — Tipi Enum](#sezione-2--tipi-enum)
    - [Sezione 3 — Tabelle](#sezione-3--tabelle)
-   - [Sezione 4 — Row Level Security] (#sezione-4--row-level-security)    
+   - [Sezione 4 — Row Level Security](#sezione-4--row-level-security)
    - [Sezione 5 — Funzione Helper `get_my_company_ids()`](#sezione-5--funzione-helper-get_my_company_ids)
    - [Sezione 6 — Policy RLS](#sezione-6--policy-rls)
    - [Stato Obiettivo 3 — Sicurezza RLS](#stato-obiettivo-3--sicurezza-rls)
@@ -61,7 +61,11 @@ L'isolamento dei dati tra tenant è garantito a **livello database** attraverso:
 > [!CAUTION]
 > **Questo è attualmente il problema architetturale più grave del progetto.** L'intero data layer è accoppiato a Supabase a 5 livelli distinti. L'assenza di un ORM significa che una futura migrazione verso un altro provider richiederebbe la riscrittura di schema, tipi, query, policy e autenticazione.
 
-### Il problema
+### Il problema originale (Risolto ✅)
+
+> **Aggiornamento:** Questo problema è stato risolto introducendo **Drizzle ORM** (`drizzle/schema.ts` e `lib/db.ts`). Il livello applicativo ora usa un client Drizzle protetto dal wrapper transazionale `withRLS`, che inietta i JWT claims in PostgreSQL. Questo garantisce type-safety e portabilità delle query senza sacrificare le RLS di Supabase.
+
+Inizialmente, lo stack operava senza alcun layer di astrazione tra il codice applicativo e Supabase:
 
 Lo stack attuale opera senza alcun layer di astrazione tra il codice applicativo e Supabase:
 
@@ -756,17 +760,6 @@ Senza il PoLP, un membro operativo (es. un dipendente appena assunto) ha gli ste
 - **Account compromesso** — un attaccante che ottiene le credenziali di un `member` ha accesso illimitato a tutto il tenant
 
 ##### Stato attuale vs. PoLP: audit per livello di privilegio
-
-| Livello PoLP | Descrizione | Implementato? | Dettaglio |
-|---|---|---|---|
-| **L0 — Autenticazione** | Solo utenti autenticati accedono al sistema | ✅ Sì | `auth.uid() IS NOT NULL` implicito in tutte le policy via `get_my_company_ids()` |
-| **L1 — Isolamento tenant** | Un utente vede solo i dati del proprio tenant | ✅ Sì | `company_id IN (SELECT get_my_company_ids())` su tutte le 32 policy |
-| **L2 — Differenziazione per ruolo** | Operazioni diverse per `owner`, `admin`, `member` | 🔴 No | La colonna `role` esiste ma non è usata in nessuna policy |
-| **L3 — Proprietà del dato** | Un utente ha più controllo sui propri record | 🔴 No | Nessun campo `created_by` o filtro per proprietario del record |
-| **L4 — Operazioni distruttive protette** | DELETE/DROP richiedono privilegi elevati | 🔴 No | Qualsiasi `member` può eseguire DELETE su qualsiasi tabella |
-| **L5 — Segregazione amministrativa** | Solo `owner` gestisce membri e ruoli | 🔴 No | Qualsiasi `member` può modificare/eliminare altri membri |
-
-**Conclusione:** il sistema attuale implementa i livelli **L0** e **L1** (autenticazione + isolamento tenant). I livelli da **L2** a **L5** non sono implementati.
 
 ##### Impatto concreto dell'assenza del PoLP
 
