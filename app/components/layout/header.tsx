@@ -58,7 +58,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         {/* User Profile Dropdown Triggers */}
         <button className="flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white bg-blue-600">
-            CR
+            GS
           </div>
           <ChevronDown size={13} />
         </button>
