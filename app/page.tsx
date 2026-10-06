@@ -44,7 +44,7 @@ const chatMessages = INITIAL_CHAT_MESSAGES;
 const conversations = INITIAL_CONVERSATIONS;
 
 const pageHeadings: Record<string, { title: string; subtitle: string }> = {
-  "Dashboard": { title: "Studio Dentistico Dott. Renzi", subtitle: "Mercoledì, 1 Luglio 2026 — Benvenuto, Dott. Carlo Renzi" },
+  "Dashboard": { title: "Studio Dentistico Dott. Scognamiglio", subtitle: "Mercoledì, 1 Luglio 2026 — Benvenuto, Dott. Giovanni Scognamiglio" },
   "Pazienti": { title: "Elenco & Cartelle Cliniche Pazienti", subtitle: "Anagrafica studio, storico prestazioni e schede cliniche con radiografie" },
   "Chat": { title: "Chat & Comunicazioni Pazienti", subtitle: "Triage urgenze odontoiatriche, recall semestrali e messaggistica WhatsApp" },
   "Agenda & Appuntamenti": { title: "Agenda & Appuntamenti", subtitle: "Planning poltrone cliniche, igiene e chirurgia sincronizzato con Google/Apple" },
