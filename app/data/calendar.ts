@@ -43,22 +43,24 @@ export const MONTH_GRID: MonthCell[] = [
 ];
 
 export const INITIAL_EVENTS: CalendarEventData[] = [
-  { id: 1, title: "Boiler check — Rossi", time: "09:00", dateNum: 1, color: "#3b82f6", source: "Google Calendar", description: "On-site boiler inspection requested via WhatsApp.", isAiGenerated: false },
-  { id: 2, title: "Client meeting", time: "15:00", dateNum: 1, color: "#8b5cf6", source: "Manual", description: "Quarterly review with Conti family.", isAiGenerated: false },
-  { id: 3, title: "Bianchi — Plumbing", time: "11:00", dateNum: 2, color: "#10b981", source: "AI Secretary", description: "Auto-scheduled by SegretarIA after WhatsApp confirmation from Bianchi.", isAiGenerated: true },
-  { id: 4, title: "Team sync", time: "09:00", dateNum: 3, color: "#8b5cf6", source: "Apple Calendar", description: "Weekly internal alignment call.", isAiGenerated: false },
-  { id: 5, title: "Conti follow-up", time: "13:00", dateNum: 3, color: "#10b981", source: "AI Secretary", description: "Follow-up quote reminder sent automatically, awaiting client reply.", isAiGenerated: true },
-  { id: 6, title: "Electrician — Via Roma", time: "10:00", dateNum: 6, color: "#3b82f6", source: "Google Calendar", description: "Rewiring job, third floor apartment.", isAiGenerated: false },
-  { id: 7, title: "Quote call — Greco", time: "14:30", dateNum: 8, color: "#10b981", source: "AI Secretary", description: "Call auto-booked by the AI agent to discuss the carpentry quote.", isAiGenerated: true },
-  { id: 8, title: "Annual boiler inspection", time: "09:30", dateNum: 14, color: "#f59e0b", source: "Manual", description: "Recurring compliance inspection, manually scheduled.", isAiGenerated: false },
-  { id: 9, title: "Painter — Vitali", time: "16:00", dateNum: 21, color: "#10b981", source: "AI Secretary", description: "Appointment confirmed automatically after quote approval.", isAiGenerated: true },
+  { id: 1, title: "Urgenza dolore — Rossi E.", time: "09:30", dateNum: 1, color: "#ef4444", source: "AI Secretary", description: "Slot emergenza odontoiatrica prenotato dall'AI tramite WhatsApp (Poltrona 1).", isAiGenerated: true },
+  { id: 2, title: "Igiene & Detartrasi — Dott.ssa Alunni", time: "11:00", dateNum: 1, color: "#0d9488", source: "Manual", description: "Seduta di igiene professionale e profilassi, paziente Ferrari.", isAiGenerated: false },
+  { id: 3, title: "Impianto Singolo 3.6 — Ferrero R.", time: "14:30", dateNum: 1, color: "#3b82f6", source: "Google Calendar", description: "Intervento chirurgico implantare Straumann con Dott. Renzi.", isAiGenerated: false },
+  { id: 4, title: "Prima Visita + Ortopanoramica", time: "16:30", dateNum: 1, color: "#8b5cf6", source: "AI Secretary", description: "Nuovo paziente prenotato tramite form online / WhatsApp.", isAiGenerated: true },
+  { id: 5, title: "Terapia Canalare 4.6 — Mancini", time: "10:00", dateNum: 2, color: "#f59e0b", source: "Manual", description: "Seconda seduta devitalizzazione molare inferiore.", isAiGenerated: false },
+  { id: 6, title: "Controllo Invisalign — Moretti", time: "11:30", dateNum: 2, color: "#10b981", source: "AI Secretary", description: "Check progressi allineatori e consegna set mascherine 6-10.", isAiGenerated: true },
+  { id: 7, title: "Consegna Corona Zirconia — Lab", time: "09:00", dateNum: 6, color: "#3b82f6", source: "Google Calendar", description: "Ritiro manufatto protesico dal laboratorio odontotecnico e prova in poltrona.", isAiGenerated: false },
+  { id: 8, title: "Sbiancamento Dentale Led — Vitali", time: "15:00", dateNum: 8, color: "#10b981", source: "AI Secretary", description: "Ciclo di sbiancamento dentale alla poltrona pre-matrimonio.", isAiGenerated: true },
+  { id: 9, title: "Manutenzione & Test Autoclavi Classe B", time: "08:30", dateNum: 14, color: "#8b5cf6", source: "Manual", description: "Verifica periodica cicli sterilizzazione e sostituzione filtri acqua osmotizzata.", isAiGenerated: false },
+  { id: 10, title: "Chirurgia Rigenerativa — Marchetti", time: "15:30", dateNum: 21, color: "#ef4444", source: "Manual", description: "Rialzo di seno mascellare e innesto biomateriale per riabilitazione All-on-4.", isAiGenerated: false },
 ];
 
 export const INITIAL_REMINDERS: ReminderData[] = [
-  { id: 1, text: "Boiler pressure sensor offline — Via Roma 12", time: "08:15", priority: "high", status: "active" },
-  { id: 2, text: "Call back Marco Rossi — plumbing quote", time: "10:00", priority: "high", status: "active" },
-  { id: 3, text: "Send invoice reminder — Client #47", time: "12:00", priority: "medium", status: "active" },
-  { id: 4, text: "Annual boiler inspection due in 3 days", time: "15:30", priority: "medium", status: "active" },
-  { id: 5, text: "Renew Google Calendar sync token", time: "09:00", priority: "low", status: "resolved" },
-  { id: 6, text: "Archive completed maintenance ticket #212", time: "—", priority: "low", status: "active" },
+  { id: 1, text: "Test biologico spore autoclave (Ciclo sterilizzazione #42)", time: "08:15", priority: "high", status: "active" },
+  { id: 2, text: "Recall WhatsApp: contattare Elena Rossi per verifica dolore post-cura", time: "10:00", priority: "high", status: "active" },
+  { id: 3, text: "Ritiro dima chirurgica guidata dal laboratorio odontotecnico", time: "12:00", priority: "medium", status: "active" },
+  { id: 4, text: "Invio promemoria richiamo igiene semestrale a 15 pazienti", time: "15:30", priority: "medium", status: "active" },
+  { id: 5, text: "Sincronizzazione agenda Google Calendar studio", time: "09:00", priority: "low", status: "resolved" },
+  { id: 6, text: "Archiviazione consensi informati e cartelle cliniche firmate", time: "18:00", priority: "low", status: "active" },
 ];
+

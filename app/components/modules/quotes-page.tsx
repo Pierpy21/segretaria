@@ -59,21 +59,21 @@ export default function QuotesPage() {
   };
 
   return (
-    <div className="grid grid-cols-[1fr_360px] gap-4 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4 items-start">
       {/* ── Main column ── */}
       <div className="space-y-4 min-w-0">
         {/* Header */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Quotes & Requests</h2>
-              <p className="text-xs text-slate-500">Manage client quotes and service requests</p>
+              <h2 className="text-sm font-semibold text-slate-900">Piani di Cura & Preventivi</h2>
+              <p className="text-xs text-slate-500">Gestione trattamenti clinici, preventivi odontoiatrici e accettazioni</p>
             </div>
             <button
               onClick={() => setShowNewModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
             >
-              <Plus size={13} /> New Quote
+              <Plus size={13} /> Nuovo Piano di Cura
             </button>
           </div>
 
@@ -89,7 +89,7 @@ export default function QuotesPage() {
                     : "bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100"
                   }`}
               >
-                {s === "all" ? "All" : STATUS_META[s].label}
+                {s === "all" ? "Tutti" : STATUS_META[s].label}
                 <span className="ml-1.5 font-bold">{statusCounts[s]}</span>
               </button>
             ))}
@@ -99,7 +99,7 @@ export default function QuotesPage() {
         {/* Quotes table */}
         {filtered.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-            <p className="text-sm text-slate-400">Nessun preventivo per questo filtro.</p>
+            <p className="text-sm text-slate-400">Nessun piano di cura per questo filtro.</p>
           </div>
         ) : (
           <QuotesTable
@@ -107,26 +107,16 @@ export default function QuotesPage() {
             statusMap={Object.fromEntries(
               Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
             )}
-            // 1. Il tasto "Occhio" apre la sidebar laterale (esattamente come prima)
             onView={(item) => setSelectedQuote(item as Quote)} 
-            
-            // 2. Il tasto "Matita" esegue una funzione diversa
             onEdit={(item) => {
               const quote = item as Quote;
-              
-              // Esempio pratico: precompila il form che già hai e apri il modale
               setForm({ 
                 client: quote.client, 
                 type: quote.type, 
-                amount: quote.amount.replace("€", ""), // Rimuove l'euro per pulizia nell'input
+                amount: quote.amount.replace("€", ""),
                 description: quote.description 
               });
-              
               setShowNewModal(true);
-              
-              // (Nota: per far funzionare il salvataggio della modifica dovrai 
-              // poi gestire la differenza tra "creare un nuovo preventivo" e 
-              // "aggiornarne uno esistente" nella funzione submitNewQuote)
             }}
           />
         )}
@@ -136,7 +126,7 @@ export default function QuotesPage() {
       {selectedQuote && (
         <div className="bg-white rounded-2xl border border-slate-200 p-4 sticky top-[100px]">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-slate-900">Quote Details</p>
+            <p className="text-sm font-semibold text-slate-900">Dettaglio Piano di Cura</p>
             <button onClick={() => setSelectedQuote(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
               <X size={14} />
             </button>
@@ -144,27 +134,27 @@ export default function QuotesPage() {
 
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Quote ID</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Codice PDC</p>
               <p className="text-sm font-semibold text-slate-900">{selectedQuote.id}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Client</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Paziente</p>
               <p className="text-sm text-slate-700">{selectedQuote.client}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Service Type</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Prestazione / Branca</p>
               <p className="text-sm text-slate-700">{selectedQuote.type}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Amount</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Preventivo Economico</p>
               <p className="text-lg font-bold text-slate-900">{selectedQuote.amount}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Date Created</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Data Elaborazione</p>
               <p className="text-sm text-slate-700">{selectedQuote.date}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Status</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Stato Accettazione</p>
               <div
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
                 style={{ backgroundColor: STATUS_META[selectedQuote.status].bg, color: STATUS_META[selectedQuote.status].text }}
@@ -173,28 +163,28 @@ export default function QuotesPage() {
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Description</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Dettagli Clinici</p>
               <p className="text-xs text-slate-600 leading-snug">{selectedQuote.description}</p>
             </div>
 
             {selectedQuote.isAiGenerated && selectedQuote.status === "pending_ai" && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-[10px] font-bold text-emerald-700 mb-2">Generated by AI Agent</p>
+                <p className="text-[10px] font-bold text-emerald-700 mb-2">Bozza Generata da AI Clinica</p>
                 <p className="text-xs text-emerald-600 leading-snug mb-3">
-                  This quote was automatically created by the AI secretary based on client inquiry. Review and either approve to send or decline to regenerate.
+                  Piano di trattamento precompilato dall&apos;assistente AI in base alla richiesta del paziente. Verifica le prestazioni e approva l&apos;invio telematico.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => declineAi(selectedQuote.id)}
                     className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50"
                   >
-                    <XCircle size={12} /> Regenerate
+                    <XCircle size={12} /> Ricalcola
                   </button>
                   <button
                     onClick={() => approveAi(selectedQuote.id)}
                     className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
                   >
-                    <Check size={12} /> Approve & Send
+                    <Check size={12} /> Approva & Invia
                   </button>
                 </div>
               </div>
@@ -202,14 +192,14 @@ export default function QuotesPage() {
 
             {selectedQuote.status === "quote_sent" && (
               <button className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200">
-                <Download size={12} /> Download PDF
+                <Download size={12} /> Scarica PDF Preventivo
               </button>
             )}
 
             {selectedQuote.status === "approved" && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-[10px] font-bold text-emerald-700">✓ Approved</p>
-                <p className="text-[10px] text-emerald-600 mt-1">This quote has been approved by the client. Ready for invoicing.</p>
+                <p className="text-[10px] font-bold text-emerald-700">✓ Accettato dal Paziente</p>
+                <p className="text-[10px] text-emerald-600 mt-1">Piano di cura accettato con firma digitale. Pronto per la fatturazione o acconto.</p>
               </div>
             )}
           </div>
@@ -221,7 +211,7 @@ export default function QuotesPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-slate-900">Create New Quote</p>
+              <p className="text-sm font-semibold text-slate-900">Nuovo Piano di Cura</p>
               <button onClick={() => setShowNewModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
                 <X size={15} />
               </button>
@@ -230,25 +220,25 @@ export default function QuotesPage() {
               <input
                 value={form.client}
                 onChange={e => setForm({ ...form, client: e.target.value })}
-                placeholder="Client name"
+                placeholder="Nome e cognome paziente"
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
               />
               <input
                 value={form.type}
                 onChange={e => setForm({ ...form, type: e.target.value })}
-                placeholder="Service type (e.g., Plumbing)"
+                placeholder="Prestazione (es. Implantologia, Ortodonzia, Igiene)"
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
               />
               <input
                 value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })}
-                placeholder="Amount (e.g., 250 or €250)"
+                placeholder="Importo preventivo (es. 1450 o €1.450)"
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
               />
               <textarea
                 value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="Quote description (optional)"
+                placeholder="Dettagli terapeutici, elementi dentali e note cliniche"
                 rows={3}
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 resize-none"
               />
@@ -258,18 +248,19 @@ export default function QuotesPage() {
                 onClick={() => setShowNewModal(false)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
               >
-                Cancel
+                Annulla
               </button>
               <button
                 onClick={submitNewQuote}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700"
               >
-                Create Quote
+                Salva Piano di Cura
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -88,29 +88,29 @@ export default function MaintenancePage() {
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Maintenance & Tasks</h2>
-            <p className="text-xs text-slate-500">Kanban board with AI-generated and manual tasks</p>
+            <h2 className="text-sm font-semibold text-slate-900">Attività Cliniche & Studio</h2>
+            <p className="text-xs text-slate-500">Kanban operativo: sterilizzazione, laboratorio odontotecnico, recall e forniture</p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
           >
-            <Plus size={13} /> Add Task
+            <Plus size={13} /> Aggiungi Attività
           </button>
         </div>
 
         {/* Stats */}
         <div className="flex gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Total</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Totale</p>
             <p className="text-lg font-bold text-slate-900">{allTasksCount}</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">AI Tasks</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Task AI</p>
             <p className="text-lg font-bold text-emerald-600">{aiTasksCount}</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Manual</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Personale Studio</p>
             <p className="text-lg font-bold text-slate-900">{humanTasksCount}</p>
           </div>
         </div>
@@ -129,13 +129,14 @@ export default function MaintenancePage() {
               }`}
           >
             <Filter size={12} />
-            {f === "all" ? "All Tasks" : f === "ai" ? "AI Only" : "Manual Only"}
+            {f === "all" ? "Tutte le Attività" : f === "ai" ? "Solo AI" : "Solo Personale"}
           </button>
         ))}
       </div>
 
+
       {/* Kanban board */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {columns.map(col => {
           const filtered =
             filterSource === "all" ? col.tasks : filterSource === "ai" ? col.tasks.filter(t => t.ai) : col.tasks.filter(t => !t.ai);
@@ -233,12 +234,12 @@ export default function MaintenancePage() {
 
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Description</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Descrizione</p>
               <p className="text-xs text-slate-600">{selectedTask.task.description}</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Priority</p>
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Priorità</p>
                 <span
                   className="inline-flex text-xs font-bold px-2 py-1 rounded-lg"
                   style={{ backgroundColor: `${PRIORITY_COLOR[selectedTask.task.priority]}18`, color: PRIORITY_COLOR[selectedTask.task.priority] }}
@@ -247,18 +248,18 @@ export default function MaintenancePage() {
                 </span>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Source</p>
-                <p className="text-xs font-semibold text-slate-700">{selectedTask.task.ai ? "AI" : "Manual"}</p>
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Origine</p>
+                <p className="text-xs font-semibold text-slate-700">{selectedTask.task.ai ? "AI" : "Manuale"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Assigned to</p>
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Assegnato a</p>
                 <p className="text-xs font-semibold text-slate-700">{selectedTask.task.assignedTo}</p>
               </div>
             </div>
 
             {/* Move task buttons */}
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Move to</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Sposta in</p>
               <div className="grid grid-cols-3 gap-2">
                 {columns.map(col => (
                   <button
@@ -282,7 +283,7 @@ export default function MaintenancePage() {
               onClick={() => deleteTask(selectedTask.task.id, selectedTask.columnId)}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
             >
-              <Trash2 size={12} /> Delete Task
+              <Trash2 size={12} /> Elimina Attività
             </button>
           </div>
         </div>
@@ -293,7 +294,7 @@ export default function MaintenancePage() {
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-slate-900">Create New Task</p>
+              <p className="text-sm font-semibold text-slate-900">Nuova Attività Studio</p>
               <button onClick={() => setShowNewModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
                 <X size={15} />
               </button>
@@ -302,13 +303,13 @@ export default function MaintenancePage() {
               <input
                 value={form.title}
                 onChange={e => setForm({ ...form, title: e.target.value })}
-                placeholder="Task title"
+                placeholder="Titolo attività (es. Test spore autoclave, Ordine compositi)"
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
               />
               <textarea
                 value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="Description (optional)"
+                placeholder="Descrizione e dettagli operativi (opzionale)"
                 rows={3}
                 className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 resize-none"
               />
@@ -318,9 +319,9 @@ export default function MaintenancePage() {
                   onChange={e => setForm({ ...form, priority: e.target.value as TaskPriority })}
                   className="rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
                 >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="high">Priorità Alta</option>
+                  <option value="medium">Priorità Media</option>
+                  <option value="low">Priorità Bassa</option>
                 </select>
                 <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
                   <input
@@ -329,7 +330,7 @@ export default function MaintenancePage() {
                     onChange={e => setForm({ ...form, isAi: e.target.checked })}
                     className="w-4 h-4 rounded"
                   />
-                  <span className="text-sm text-slate-700">AI Generated</span>
+                  <span className="text-sm text-slate-700">Generato da AI</span>
                 </label>
               </div>
             </div>
@@ -338,13 +339,13 @@ export default function MaintenancePage() {
                 onClick={() => setShowNewModal(false)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
               >
-                Cancel
+                Annulla
               </button>
               <button
                 onClick={submitNewTask}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700"
               >
-                Create Task
+                Salva Attività
               </button>
             </div>
           </div>
@@ -353,3 +354,4 @@ export default function MaintenancePage() {
     </div>
   );
 }
+

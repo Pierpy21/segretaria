@@ -13,13 +13,14 @@ export default function CalendarWidget({ weekDays, reminders, priorityColor }: C
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Calendar & Agenda</h2>
-          <p className="text-xs text-slate-500">Week of Jun 29 – Jul 3, 2026</p>
+          <h2 className="text-sm font-semibold text-slate-900">Agenda & Poltrone</h2>
+          <p className="text-xs text-slate-500">Settimana 29 Giu – 3 Lug 2026</p>
         </div>
         <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
-          Full view →
+          Vista completa →
         </button>
       </div>
+
 
       {/* Weekly columns */}
       <div className="flex-1 grid grid-cols-5 border-b border-slate-100">
@@ -59,13 +60,13 @@ export default function CalendarWidget({ weekDays, reminders, priorityColor }: C
 
       {/* Reminders */}
       <div className="px-5 py-3 bg-slate-50">
-        <p className="text-xs font-bold mb-2 text-slate-700">Today's Reminders</p>
+        <p className="text-xs font-bold mb-2 text-slate-700">Promemoria di Oggi</p>
         <div className="space-y-1.5">
           {reminders.map((r, i) => (
             <div key={i} className="flex items-center gap-2.5">
               <span
                 className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: priorityColor[r.priority] }}
+                style={{ backgroundColor: priorityColor[r.priority as ReminderPriority] || "#94a3b8" }}
               />
               <span className="text-xs flex-1 truncate text-slate-700">{r.text}</span>
               <span className="text-[11px] font-semibold flex-shrink-0 text-slate-400">{r.time}</span>
@@ -73,6 +74,7 @@ export default function CalendarWidget({ weekDays, reminders, priorityColor }: C
           ))}
         </div>
       </div>
+
     </div>
   );
 }

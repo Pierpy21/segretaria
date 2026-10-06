@@ -9,11 +9,11 @@ interface MessagingHubProps {
 }
 
 export default function MessagingHub({ chats }: MessagingHubProps) {
-  const [chatTab, setChatTab] = useState<"All" | "Unread" | "AI Active">("All");
+  const [chatTab, setChatTab] = useState<"Tutte" | "Non lette" | "AI Attiva">("Tutte");
 
   const filteredChats =
-    chatTab === "Unread" ? chats.filter(c => c.unread > 0)
-    : chatTab === "AI Active" ? chats.filter(c => c.ai)
+    chatTab === "Non lette" ? chats.filter(c => c.unread > 0)
+    : chatTab === "AI Attiva" ? chats.filter(c => c.ai)
     : chats;
 
   return (
@@ -21,17 +21,17 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Messaging Hub</h2>
-          <p className="text-xs text-slate-500">WhatsApp & Direct Messages</p>
+          <h2 className="text-sm font-semibold text-slate-900">Centro Messaggi Pazienti</h2>
+          <p className="text-xs text-slate-500">WhatsApp Studio & Triage AI</p>
         </div>
         <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
-          View all →
+          Vedi tutti →
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1.5 px-5 pt-3 pb-1">
-        {(["All", "Unread", "AI Active"] as const).map(tab => (
+        {(["Tutte", "Non lette", "AI Attiva"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setChatTab(tab)}
@@ -42,7 +42,7 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
               }`}
           >
             {tab}
-            {tab === "Unread" && chatTab !== "Unread" && (
+            {tab === "Non lette" && chatTab !== "Non lette" && (
               <span className="ml-1.5 inline-block w-4 h-4 rounded-full text-white text-[9px] font-bold leading-4 text-center bg-blue-500">
                 4
               </span>
@@ -50,6 +50,7 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
           </button>
         ))}
       </div>
+
 
       {/* Chat List */}
       <div className="flex-1 divide-y divide-slate-50">

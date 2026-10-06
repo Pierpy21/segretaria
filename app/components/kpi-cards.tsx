@@ -19,7 +19,7 @@ interface KpiCardsProps {
 
 export default function KpiCards({ data }: KpiCardsProps) {
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
       {data.map(({ label, value, sub, up, icon: Icon, accent, spark }) => (
         <div
           key={label}

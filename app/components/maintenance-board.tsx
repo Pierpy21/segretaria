@@ -19,13 +19,14 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Maintenance & Tasks</h2>
-          <p className="text-xs text-slate-500">AI-generated task board</p>
+          <h2 className="text-sm font-semibold text-slate-900">Attività Cliniche & Studio</h2>
+          <p className="text-xs text-slate-500">Kanban operativo: sterilizzazione, recall e lab</p>
         </div>
         <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
-          + Add task
+          + Aggiungi attività
         </button>
       </div>
+
 
       {/* Board Grid */}
       <div className="flex-1 grid grid-cols-3 min-h-[220px]">
@@ -36,13 +37,13 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
             style={{ ["--col-bg" as any]: bg }}
           >
             {/* Column Header */}
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
-              <span className="text-xs font-bold text-slate-700">{col}</span>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent }} />
+              <span className="text-xs font-bold text-slate-900">{col}</span>
               <span
-                className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full [background-color:var(--badge-bg-soft)]"
+                className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full [background-color:var(--badge-bg-soft)]"
                 style={{ 
-                  ["--badge-bg-soft" as any]: `${accent}20`,
+                  ["--badge-bg-soft" as any]: `${accent}25`,
                   color: accent 
                 }}
               >
@@ -51,38 +52,48 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
             </div>
 
             {/* Task Cards */}
-            {tasks.map((t, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-xl p-3 cursor-pointer border border-slate-200 transition-shadow hover:shadow-sm"
-              >
-                <p className="text-[11px] font-medium leading-snug mb-2.5 text-slate-900">{t.title}</p>
-                <div className="flex items-center justify-between">
-                  <span
-                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full [background-color:var(--prio-soft-bg)]"
-                    style={{ 
-                      ["--prio-soft-bg" as any]: `${priorityColor[t.priority]}18`, 
-                      color: priorityColor[t.priority] 
-                    }}
-                  >
-                    {t.priority}
-                  </span>
-                  <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                    {t.ai ? (
-                      <>
-                        <Bot size={11} className="text-blue-500" />
-                        <span className="text-blue-500">AI</span>
-                      </>
-                    ) : (
-                      <>
-                        <User size={11} className="text-slate-500" />
-                        <span className="text-slate-500">Human</span>
-                      </>
-                    )}
-                  </span>
+            {tasks.map((t, i) => {
+              const prioMeta = t.priority === "high" 
+                ? { label: "Alta", bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" }
+                : t.priority === "medium"
+                ? { label: "Media", bg: "#fef3c7", text: "#92400e", border: "#fcd34d" }
+                : { label: "Bassa", bg: "#dcfce7", text: "#166534", border: "#86efac" };
+
+              return (
+                <div
+                  key={i}
+                  className="bg-white rounded-xl p-3 cursor-pointer border border-slate-300 shadow-2xs hover:border-slate-400 hover:shadow-xs transition-all"
+                >
+                  <p className="text-xs font-semibold leading-snug mb-2.5 text-slate-900">{t.title}</p>
+                  <div className="flex items-center justify-between">
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-md border"
+                      style={{ 
+                        backgroundColor: prioMeta.bg,
+                        color: prioMeta.text,
+                        borderColor: prioMeta.border
+                      }}
+                    >
+                      {prioMeta.label}
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                      {t.ai ? (
+                        <>
+                          <Bot size={12} className="text-blue-600" />
+                          <span className="text-blue-600 font-bold">AI Studio</span>
+                        </>
+                      ) : (
+                        <>
+                          <User size={12} className="text-slate-600" />
+                          <span className="text-slate-700 font-semibold">Staff</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+
           </div>
         ))}
       </div>

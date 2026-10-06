@@ -24,11 +24,11 @@ export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesT
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Quotes & Requests</h2>
-          <p className="text-xs text-slate-500">{data.length} open requests total</p>
+          <h2 className="text-sm font-semibold text-slate-900">Piani di Cura & Preventivi</h2>
+          <p className="text-xs text-slate-500">{data.length} piani di cura attivi</p>
         </div>
         <button className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors">
-          <Filter size={11} /> Filter
+          <Filter size={11} /> Filtra
         </button>
       </div>
 
@@ -37,7 +37,7 @@ export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesT
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-slate-50">
-              {["Client", "Service", "Date", "Amount", "Status", ""].map(h => (
+              {["Paziente", "Trattamento", "Data", "Importo", "Stato", ""].map(h => (
                 <th
                   key={h}
                   className="px-4 py-2.5 text-left font-bold text-slate-400 border-b border-slate-100"
@@ -47,6 +47,7 @@ export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesT
               ))}
             </tr>
           </thead>
+
           <tbody>
             {data.map((q, idx) => {
               const s = statusMap[q.status] || { label: q.status, bg: "#f1f5f9", text: "#334155" };

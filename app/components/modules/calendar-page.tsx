@@ -97,26 +97,26 @@ export default function CalendarPage() {
   ).map(priority => ({ priority, items: activeReminders.filter(r => r.priority === priority) }));
 
   return (
-    <div className="grid grid-cols-[1fr_320px] gap-4 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
       {/* ── Main column ── */}
       <div className="space-y-4 min-w-0">
         {/* Calendar card */}
         <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Calendar & Reminders</h2>
-              <p className="text-xs text-slate-500">{MONTH_LABEL}</p>
+              <h2 className="text-sm font-semibold text-slate-900">Agenda & Appuntamenti Studio</h2>
+              <p className="text-xs text-slate-500">{MONTH_LABEL} — Planning Poltrone Odontoiatriche</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
-                {(["Month", "Week", "Day"] as const).map(v => (
+                {([["Month", "Mese"], ["Week", "Settimana"], ["Day", "Giorno"]] as const).map(([v, label]) => (
                   <button
                     key={v}
-                    onClick={() => setView(v)}
+                    onClick={() => setView(v as ViewMode)}
                     className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors
                       ${view === v ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"}`}
                   >
-                    {v}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -124,10 +124,11 @@ export default function CalendarPage() {
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
               >
-                <Plus size={13} /> Add Event
+                <Plus size={13} /> Nuovo Appuntamento
               </button>
             </div>
           </div>
+
 
           {/* Month view */}
           {view === "Month" && (
@@ -312,74 +313,99 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ── Add Event modal ── */}
+      {/* ── Add Event modal (Nuovo Appuntamento) ── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-slate-900">Add Event</p>
-              <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
-                <X size={15} />
-              </button>
-            </div>
-            <div className="space-y-2.5">
-              <input
-                value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
-                placeholder="Titolo evento"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
-              />
-              <div className="flex gap-2">
-                <input
-                  value={form.time}
-                  onChange={e => setForm({ ...form, time: e.target.value })}
-                  placeholder="Orario (es. 14:30)"
-                  className="flex-1 rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={form.dateNum}
-                  onChange={e => setForm({ ...form, dateNum: e.target.value })}
-                  placeholder="Giorno"
-                  className="w-20 rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
-                />
-              </div>
-              <select
-                value={form.source}
-                onChange={e => setForm({ ...form, source: e.target.value as EventSource })}
-                className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
-              >
-                <option value="Manual">Manual</option>
-                <option value="Google Calendar">Google Calendar</option>
-                <option value="Apple Calendar">Apple Calendar</option>
-              </select>
-              <textarea
-                value={form.description}
-                onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="Descrizione (opzionale)"
-                rows={3}
-                className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 resize-none"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 mt-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border-2 border-slate-300 w-full max-w-sm p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">
+              <p className="text-base font-bold text-slate-900">Nuovo Appuntamento Studio</p>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                title="Chiudi"
               >
-                Cancel
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Paziente & Prestazione</label>
+                <input
+                  value={form.title}
+                  onChange={e => setForm({ ...form, title: e.target.value })}
+                  placeholder="Es. Elena Rossi — Urgenza dolore o Igiene"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">Orario Visita</label>
+                  <input
+                    value={form.time}
+                    onChange={e => setForm({ ...form, time: e.target.value })}
+                    placeholder="Es. 09:30 o 15:00"
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">Giorno (del mese)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={form.dateNum}
+                    onChange={e => setForm({ ...form, dateNum: e.target.value })}
+                    placeholder="1-31"
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Poltrona / Sincronizzazione</label>
+                <select
+                  value={form.source}
+                  onChange={e => setForm({ ...form, source: e.target.value as EventSource })}
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-bold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                >
+                  <option value="Manual" className="text-slate-900 font-semibold">Poltrona Studio (Manuale)</option>
+                  <option value="Google Calendar" className="text-slate-900 font-semibold">Google Calendar Studio</option>
+                  <option value="Apple Calendar" className="text-slate-900 font-semibold">Apple Calendar</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Note Cliniche & Materiali</label>
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  placeholder="Dettagli poltrona, anestetico, cartella clinica (opzionale)"
+                  rows={3}
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-medium outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 transition-colors"
+              >
+                Annulla
               </button>
               <button
                 onClick={submitNewEvent}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors"
               >
-                Add Event
+                Fissa Appuntamento
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -411,11 +437,12 @@ function EventChip({ event, onClick, expanded }: { event: CalendarEventData; onC
 function SyncRow({ label, status, onClick }: { label: string; status: ConnectionStatus; onClick: () => void }) {
   const meta =
     status === "connected"
-      ? { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", text: "Connected" }
+      ? { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", text: "Sincronizzato" }
       : status === "syncing"
-      ? { icon: RefreshCw, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", text: "Syncing…" }
-      : { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Disconnected" };
+      ? { icon: RefreshCw, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", text: "In corso…" }
+      : { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non connesso" };
   const Icon = meta.icon;
+
 
   return (
     <button

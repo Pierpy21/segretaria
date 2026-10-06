@@ -1,7 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import { Bot, Search, Send, Check, X, Sparkles } from "lucide-react";
+import { Bot, Search, Send, Check, X, Sparkles, ArrowLeft } from "lucide-react";
 import type { ChatListItem, Message } from "@/app/types/messaging";
 
 interface MessagingPageProps {
@@ -10,14 +8,15 @@ interface MessagingPageProps {
 }
 
 export default function MessagingPage({ chats, conversations }: MessagingPageProps) {
-  const [tab, setTab] = useState<"All" | "Unread" | "AI Active">("All");
+  const [tab, setTab] = useState<"Tutte" | "Non lette" | "AI Attiva">("Tutte");
   const [selectedId, setSelectedId] = useState<number | null>(chats[0]?.id ?? null);
   const [threads, setThreads] = useState(conversations);
   const [draftText, setDraftText] = useState<string | null>(null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const filteredChats =
-    tab === "Unread" ? chats.filter(c => c.unread > 0)
-    : tab === "AI Active" ? chats.filter(c => c.ai)
+    tab === "Non lette" ? chats.filter(c => c.unread > 0)
+    : tab === "AI Attiva" ? chats.filter(c => c.ai)
     : chats;
 
   const selectedChat = chats.find(c => c.id === selectedId) ?? null;
@@ -47,27 +46,30 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
   function selectChat(id: number) {
     setSelectedId(id);
     setDraftText(null);
+    setMobileChatOpen(true);
   }
 
   return (
-    <div className="grid grid-cols-[320px_1fr] gap-4 h-[calc(100vh-190px)]">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[340px_1fr] gap-4 h-[calc(100vh-170px)] sm:h-[calc(100vh-190px)]">
       {/* Chat list */}
-      <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
+      <div className={`bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200 ${
+        mobileChatOpen ? "hidden md:flex" : "flex"
+      }`}>
         <div className="px-4 py-4 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
-          <p className="text-xs text-slate-500 mb-3">Evolution API — WhatsApp</p>
+          <h2 className="text-sm font-semibold text-slate-900">Chat & Comunicazioni</h2>
+          <p className="text-xs text-slate-500 mb-3">WhatsApp Studio — Evolution API</p>
           <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 focus-within:border-blue-500 transition-colors">
             <Search size={13} className="text-slate-400 flex-shrink-0" />
             <input
               type="text"
               className="bg-transparent outline-none flex-1 text-xs text-slate-900 placeholder-slate-400"
-              placeholder="Cerca contatto…"
+              placeholder="Cerca paziente…"
             />
           </div>
         </div>
 
         <div className="flex gap-1.5 px-4 pt-3 pb-2">
-          {(["All", "Unread", "AI Active"] as const).map(t => (
+          {(["Tutte", "Non lette", "AI Attiva"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -81,6 +83,7 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
             </button>
           ))}
         </div>
+
 
         <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
           {filteredChats.map(chat => {
@@ -128,23 +131,35 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
       </div>
 
       {/* Conversation */}
-      <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
+      <div className={`bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200 ${
+        !mobileChatOpen ? "hidden md:flex" : "flex"
+      }`}>
         {selectedChat ? (
           <>
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-5 py-3 sm:py-4 border-b border-slate-100">
+              {/* Back button on mobile */}
+              <button
+                onClick={() => setMobileChatOpen(false)}
+                className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 mr-1"
+                aria-label="Torna alle chat"
+              >
+                <ArrowLeft size={16} />
+              </button>
+
               <div
-                className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
                 style={{ ["--avatar-color" as any]: selectedChat.color }}
               >
                 {selectedChat.initials}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-900">{selectedChat.name}</p>
+                <p className="text-sm font-semibold text-slate-900 truncate">{selectedChat.name}</p>
                 <p className="text-xs text-slate-400">WhatsApp</p>
               </div>
               {selectedChat.ai && (
-                <span className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> AI Agent Active
+                <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2 sm:px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> 
+                  <span className="hidden sm:inline">Assistente</span> AI Attivo
                 </span>
               )}
             </div>
@@ -169,8 +184,9 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
             {pendingDraft && (
               <div className="mx-5 mb-4 rounded-2xl border border-dashed border-blue-300 bg-blue-50/60 p-4 flex-shrink-0">
                 <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold text-blue-700">
-                  <Sparkles size={12} /> Bozza generata dall&apos;agente AI (n8n) — richiede approvazione
+                  <Sparkles size={12} /> Bozza generata dall&apos;AI Clinica — Triage e risposta (richiede approvazione)
                 </div>
+
                 <textarea
                   value={draftText ?? pendingDraft.text}
                   onChange={e => setDraftText(e.target.value)}

@@ -13,7 +13,8 @@ import MessagingPage from "./components/modules/messaging-page";
 import CalendarPage from "./components/modules/calendar-page";
 import QuotesPage from "./components/modules/quotes-page";
 import MaintenancePage from "./components/modules/maintenance-page";
-import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3 } from "lucide-react";
+import PatientsPage from "./components/modules/patients-page";
+import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3, Users } from "lucide-react";
 import { INITIAL_QUOTES } from "@/app/data/quotes";
 import { STATUS_META } from "@/app/constants/quotes";
 import { INITIAL_CHAT_MESSAGES, INITIAL_CONVERSATIONS } from "@/app/data/messaging";
@@ -24,67 +25,72 @@ import { PRIORITY_COLOR as CALENDAR_PRIORITY_COLOR } from "@/app/constants/calen
 
 const navLinks = [
   { icon: LayoutDashboard, label: "Dashboard" },
-  { icon: MessageSquare, label: "Messaging & WhatsApp Hub", badge: 12 },
-  { icon: Calendar, label: "Calendar & Reminders" },
-  { icon: Wrench, label: "Maintenance & Tasks" },
-  { icon: FileText, label: "Quotes & Requests", badge: 7 },
-  { icon: Bot, label: "AI Config & Knowledge Base" },
+  { icon: Users, label: "Pazienti", badge: 4 },
+  { icon: MessageSquare, label: "Chat", badge: 5 },
+  { icon: Calendar, label: "Agenda & Appuntamenti" },
+  { icon: Wrench, label: "Attività Cliniche & Studio" },
+  { icon: FileText, label: "Piani di Cura & Preventivi", badge: 7 },
+  { icon: Bot, label: "Assistente AI & Protocolli" },
 ];
 
 const kpis = [
-  { label: "Active Chats", value: "32", sub: "+4 since yesterday", up: true, icon: MessageSquare, accent: "#3b82f6", spark: [24, 28, 22, 30, 27, 32] },
-  { label: "Scheduled Events", value: "18", sub: "This week", up: true, icon: Calendar, accent: "#0d9488", spark: [12, 15, 11, 16, 14, 18] },
-  { label: "Pending Maintenance", value: "3", sub: "1 resolved today", up: false, icon: Wrench, accent: "#f59e0b", spark: [6, 4, 5, 3, 4, 3] },
-  { label: "Open Quotes", value: "7", sub: "+3 this week", up: true, icon: FileText, accent: "#8b5cf6", spark: [3, 5, 4, 6, 5, 7] },
+  { label: "Pazienti in Chat", value: "38", sub: "+6 nuovi contatti oggi", up: true, icon: MessageSquare, accent: "#3b82f6", spark: [24, 28, 22, 30, 27, 38] },
+  { label: "Appuntamenti Poltrona", value: "24", sub: "Questa settimana", up: true, icon: Calendar, accent: "#0d9488", spark: [14, 18, 16, 20, 19, 24] },
+  { label: "Sterilizzazione & Task", value: "3", sub: "Tutti i cicli autoclave ok", up: false, icon: Wrench, accent: "#f59e0b", spark: [5, 4, 3, 2, 4, 3] },
+  { label: "Piani di Cura Aperti", value: "7", sub: "€16.400 in accettazione", up: true, icon: FileText, accent: "#8b5cf6", spark: [3, 5, 4, 6, 5, 7] },
 ];
 
 const chatMessages = INITIAL_CHAT_MESSAGES;
 const conversations = INITIAL_CONVERSATIONS;
 
 const pageHeadings: Record<string, { title: string; subtitle: string }> = {
-  "Dashboard": { title: "Dashboard Overview", subtitle: "Wednesday, 1 July 2026 — Good morning, Carlo" },
-  "Messaging & WhatsApp Hub": { title: "Messaging & WhatsApp Hub", subtitle: "Gestisci le conversazioni ricevute via Evolution API" },
-  "Calendar & Reminders": { title: "Calendar & Reminders", subtitle: "Vista mensile, settimanale e giornaliera con sync Google/Apple" },
-  "Quotes & Requests": { title: "Quotes & Requests", subtitle: "Gestisci preventivi e richieste di servizio da clienti" },
-  "Maintenance & Tasks": { title: "Maintenance & Tasks", subtitle: "Kanban board con task generati da AI e manuali" },
+  "Dashboard": { title: "Studio Dentistico Dott. Renzi", subtitle: "Mercoledì, 1 Luglio 2026 — Benvenuto, Dott. Carlo Renzi" },
+  "Pazienti": { title: "Elenco & Cartelle Cliniche Pazienti", subtitle: "Anagrafica studio, storico prestazioni e schede cliniche con radiografie" },
+  "Chat": { title: "Chat & Comunicazioni Pazienti", subtitle: "Triage urgenze odontoiatriche, recall semestrali e messaggistica WhatsApp" },
+  "Agenda & Appuntamenti": { title: "Agenda & Appuntamenti", subtitle: "Planning poltrone cliniche, igiene e chirurgia sincronizzato con Google/Apple" },
+  "Piani di Cura & Preventivi": { title: "Piani di Cura & Preventivi", subtitle: "Preventivi clinici, piani di trattamento 3D e accettazione pazienti" },
+  "Attività Cliniche & Studio": { title: "Attività Cliniche & Studio", subtitle: "Kanban operativo: sterilizzazione, laboratorio odontotecnico e ordini forniture" },
 };
+
+
 
 const weekDays = [
   {
-    day: "Mon", date: "29", today: false,
+    day: "Lun", date: "29", today: false,
     events: [
-      { title: "Boiler check — Rossi", time: "09:00", color: "#3b82f6" },
-      { title: "Quote call — Greco", time: "14:30", color: "#0d9488" },
+      { title: "Igiene orale — Rossi E.", time: "09:00", color: "#0d9488" },
+      { title: "Consulenza All-on-4 — Greco", time: "14:30", color: "#3b82f6" },
     ],
   },
   {
-    day: "Tue", date: "30", today: false,
-    events: [{ title: "Electrician — Via Roma", time: "10:00", color: "#8b5cf6" }],
+    day: "Mar", date: "30", today: false,
+    events: [{ title: "Controllo Invisalign — Ferrari", time: "10:00", color: "#8b5cf6" }],
   },
   {
-    day: "Wed", date: "1", today: true,
+    day: "Mer", date: "1", today: true,
     events: [
-      { title: "Maintenance visit", time: "09:30", color: "#f59e0b" },
-      { title: "Client meeting", time: "15:00", color: "#3b82f6" },
+      { title: "Urgenza dolore — Rossi E.", time: "09:30", color: "#ef4444" },
+      { title: "Chirurgia Implantare — Ferrero", time: "14:30", color: "#3b82f6" },
     ],
   },
   {
-    day: "Thu", date: "2", today: false,
-    events: [{ title: "Bianchi — Plumbing", time: "11:00", color: "#3b82f6" }],
+    day: "Gio", date: "2", today: false,
+    events: [{ title: "Terapia Canalare 4.6 — Mancini", time: "10:00", color: "#f59e0b" }],
   },
   {
-    day: "Fri", date: "3", today: false,
+    day: "Ven", date: "3", today: false,
     events: [
-      { title: "Team sync", time: "09:00", color: "#8b5cf6" },
-      { title: "Conti follow-up", time: "13:00", color: "#0d9488" },
+      { title: "Briefing clinico studio", time: "09:00", color: "#8b5cf6" },
+      { title: "Sbiancamento Led — Vitali", time: "15:00", color: "#0d9488" },
     ],
   },
 ];
 
 const reminders = [
-  { text: "Call back Marco Rossi — plumbing quote", time: "10:00", priority: "high" },
-  { text: "Send invoice to Roberto Conti", time: "12:00", priority: "medium" },
-  { text: "Annual boiler inspection reminder", time: "15:30", priority: "low" },
+  { text: "Test biologico spore autoclave (Ciclo sterilizzazione #42)", time: "08:15", priority: "high" as const },
+  { text: "Recall WhatsApp decorso post-operatorio Elena Rossi", time: "10:00", priority: "high" as const },
+  { text: "Ritiro dima chirurgica guidata dal laboratorio", time: "12:00", priority: "medium" as const },
+  { text: "Promemoria igiene semestrale inviato a 15 pazienti", time: "15:30", priority: "medium" as const },
 ];
 
 const kanban = INITIAL_COLUMNS.map(col => ({
@@ -100,6 +106,7 @@ const statusMap = Object.fromEntries(
 );
 
 const priorityColor = CALENDAR_PRIORITY_COLOR;
+
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -117,26 +124,33 @@ function ComingSoon({ label }: { label: string }) {
 
 export default function App() {
   const [activeNav, setActiveNav] = useState("Dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { title, subtitle } = pageHeadings[activeNav] ?? { title: activeNav, subtitle: "Presto disponibile" };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
 
       {/* ══ SIDEBAR ══ */}
-      <Sidebar navLinks={navLinks} activeNav={activeNav} setActiveNav={setActiveNav} />
+      <Sidebar 
+        navLinks={navLinks} 
+        activeNav={activeNav} 
+        setActiveNav={setActiveNav} 
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+      />
 
       {/* ══ MAIN CONTAINER ══ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* ── HEADER ── */}
-        <Header />
+        <Header onMenuClick={() => setMobileMenuOpen(true)} />
 
         {/* ── CONTENT AREA ── */}
-        <main className="flex-1 overflow-y-auto p-5 space-y-4">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
 
           {/* Page Heading */}
           <div>
-            <h1 className="text-lg font-bold text-slate-900">{title}</h1>
+            <h1 className="text-base sm:text-lg font-bold text-slate-900">{title}</h1>
             <p className="text-xs text-slate-500">{subtitle}</p>
           </div>
 
@@ -146,35 +160,40 @@ export default function App() {
               <KpiCards data={kpis} />
 
               {/* ── ROW 2: MESSAGING + CALENDAR ── */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <MessagingHub chats={chatMessages} />
                 <CalendarWidget weekDays={weekDays} reminders={reminders} priorityColor={priorityColor} />
               </div>
 
               {/* ── ROW 3: KANBAN + QUOTES ── */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <MaintenanceBoard boardData={kanban} priorityColor={priorityColor} />
                 <QuotesTable 
-  data={quotes} 
-  statusMap={statusMap} 
-  onView={() => setActiveNav("Quotes & Requests")} 
-  onEdit={() => setActiveNav("Quotes & Requests")}
-/></div>
+                  data={quotes} 
+                  statusMap={statusMap} 
+                  onView={() => setActiveNav("Piani di Cura & Preventivi")} 
+                  onEdit={() => setActiveNav("Piani di Cura & Preventivi")}
+                />
+              </div>
 
               {/* ── ROW 4: AI PERFORMANCE ── */}
               <PerformanceStats />
             </>
-          ) : activeNav === "Messaging & WhatsApp Hub" ? (
+          ) : activeNav === "Pazienti" ? (
+            <PatientsPage />
+          ) : activeNav === "Chat" ? (
             <MessagingPage chats={chatMessages} conversations={conversations} />
-          ) : activeNav === "Calendar & Reminders" ? (
+          ) : activeNav === "Agenda & Appuntamenti" ? (
             <CalendarPage />
-          ) : activeNav === "Quotes & Requests" ? (
+          ) : activeNav === "Piani di Cura & Preventivi" ? (
             <QuotesPage />
-          ) : activeNav === "Maintenance & Tasks" ? (
+          ) : activeNav === "Attività Cliniche & Studio" ? (
             <MaintenancePage />
           ) : (
             <ComingSoon label={activeNav} />
           )}
+
+
 
           {/* Bottom Spacer */}
           <div className="h-2" />
