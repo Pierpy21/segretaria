@@ -2,7 +2,7 @@
 // Sostituisce lo store JSON su file. Le credenziali sono cifrate in crypto.ts.
 import "server-only";
 import { and, eq } from "drizzle-orm";
-import { withUser } from "@/lib/db";
+import { withUser, type Tx } from "@/lib/db";
 import { calendarConnections, type CalendarConnection } from "@/drizzle/schema";
 import type { SyncProvider } from "@/app/types/calendar-sync";
 import { decryptSecret, encryptSecret } from "./crypto";
@@ -39,10 +39,12 @@ function toInfo(row: CalendarConnection): ConnectionInfo {
   };
 }
 
-export async function listConnectionInfo(companyId: string): Promise<ConnectionInfo[]> {
-  const rows = await withUser((tx) =>
-    tx.select().from(calendarConnections).where(eq(calendarConnections.companyId, companyId))
-  );
+/** Richiede una tx già aperta (withCompany/withUser) per non aprirne una seconda. */
+export async function listConnectionInfo(tx: Tx, companyId: string): Promise<ConnectionInfo[]> {
+  const rows = await tx
+    .select()
+    .from(calendarConnections)
+    .where(eq(calendarConnections.companyId, companyId));
   return rows.map(toInfo);
 }
 

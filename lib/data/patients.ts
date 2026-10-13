@@ -1,19 +1,13 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
-import { withUser } from "@/lib/db";
+import type { Tx } from "@/lib/db";
 import { patients, type NewPatientRow, type PatientRow } from "@/drizzle/schema";
 import type { Patient } from "@/app/types/patients";
 import type { CreatePatientInput } from "@/app/types/api";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
-import { NotFoundError, ValidationError, pgErrorCode } from "@/lib/errors";
-import {
-  ageFrom,
-  first,
-  formatItalianLong,
-  initialsOf,
-  parseDateInput,
-} from "./format";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ageFrom, formatItalianLong, initialsOf, parseDateInput } from "./format";
 
 const MAX_CODE_ATTEMPTS = 5;
 
@@ -57,35 +51,35 @@ function newPatientCode(now: Date): string {
   return `PT-${now.getFullYear()}-${seq}`;
 }
 
-export async function listPatients(companyId: string): Promise<Patient[]> {
+export async function listPatients(tx: Tx, companyId: string): Promise<Patient[]> {
   const now = new Date();
   const tz = getCalendarTimeZone();
-  const rows = await withUser((tx) =>
-    tx
-      .select()
-      .from(patients)
-      .where(eq(patients.companyId, companyId))
-      .orderBy(asc(patients.name))
-  );
+  const rows = await tx
+    .select()
+    .from(patients)
+    .where(eq(patients.companyId, companyId))
+    .orderBy(asc(patients.name));
   return rows.map((row) => toPatient(row, now, tz));
 }
 
 /** `code` è l'id applicativo del paziente (es. "PT-2026-0142"). */
-export async function getPatient(companyId: string, code: string): Promise<Patient | null> {
+export async function getPatient(tx: Tx, companyId: string, code: string): Promise<Patient | null> {
   const now = new Date();
   const tz = getCalendarTimeZone();
-  const rows = await withUser((tx) =>
-    tx
-      .select()
-      .from(patients)
-      .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
-      .limit(1)
-  );
+  const rows = await tx
+    .select()
+    .from(patients)
+    .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
+    .limit(1);
   const row = rows[0];
   return row ? toPatient(row, now, tz) : null;
 }
 
-export async function createPatient(companyId: string, input: CreatePatientInput): Promise<Patient> {
+/**
+ * Il retry sul codice casuale usa ON CONFLICT DO NOTHING (non un errore 23505):
+ * un errore abortirebbe la transazione, il DO NOTHING no. Stessa tx, nessun round-trip extra.
+ */
+export async function createPatient(tx: Tx, companyId: string, input: CreatePatientInput): Promise<Patient> {
   const now = new Date();
   const tz = getCalendarTimeZone();
   const values = {
@@ -106,24 +100,20 @@ export async function createPatient(companyId: string, input: CreatePatientInput
     treatments: input.treatments,
   };
 
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const row = await withUser(async (tx) => {
-        const inserted = await tx
-          .insert(patients)
-          .values({ ...values, code: newPatientCode(now) })
-          .returning();
-        return first(inserted, "insert patients");
-      });
-      return toPatient(row, now, tz);
-    } catch (err) {
-      // Collisione sul codice casuale: nuovo tentativo con un codice diverso.
-      if (pgErrorCode(err) !== "23505" || attempt >= MAX_CODE_ATTEMPTS) throw err;
-    }
+  for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt++) {
+    const inserted = await tx
+      .insert(patients)
+      .values({ ...values, code: newPatientCode(now) })
+      .onConflictDoNothing()
+      .returning();
+    const row = inserted[0];
+    if (row) return toPatient(row, now, tz);
   }
+  throw new ConflictError("Impossibile generare un codice paziente univoco, riprova");
 }
 
 export async function updatePatient(
+  tx: Tx,
   companyId: string,
   code: string,
   patch: Partial<CreatePatientInput>,
@@ -147,14 +137,12 @@ export async function updatePatient(
   if (patch.xrayFindings !== undefined) set.xrayFindings = patch.xrayFindings;
   if (patch.treatments !== undefined) set.treatments = patch.treatments;
 
-  return withUser(async (tx) => {
-    const updated = await tx
-      .update(patients)
-      .set(set)
-      .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
-      .returning();
-    const row = updated[0];
-    if (!row) throw new NotFoundError("Paziente non trovato");
-    return toPatient(row, now, tz);
-  });
+  const updated = await tx
+    .update(patients)
+    .set(set)
+    .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
+    .returning();
+  const row = updated[0];
+  if (!row) throw new NotFoundError("Paziente non trovato");
+  return toPatient(row, now, tz);
 }

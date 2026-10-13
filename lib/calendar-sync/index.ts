@@ -1,11 +1,13 @@
 // Server-only. Orchestrazione dei provider di sincronizzazione calendario (per azienda).
+// Regola: nessuna transazione DB aperta durante una chiamata di rete ai provider.
+// Ogni passo DB è una tx breve (withUser); le route di sola lettura usano withCompany.
 import "server-only";
 import type { AppleConnectInput, CreateCalendarEventInput, SyncResult } from "@/app/types/api";
 import type { CalendarEventData, EventSource } from "@/app/types/calendar";
 import type { CreateEventInput, ProviderStatus, SyncProvider, SyncStatusResponse } from "@/app/types/calendar-sync";
 import * as apple from "./apple";
 import { CalendarSyncError } from "./errors";
-import { findConnectionInfo, listConnectionInfo, markSynced } from "./connections";
+import { findConnectionInfo, listConnectionInfo, markSynced, type ConnectionInfo } from "./connections";
 import * as google from "./google";
 import { getCalendarTimeZone } from "./time";
 import {
@@ -15,6 +17,7 @@ import {
   resolveAgendaRange,
   upsertExternalEvents,
 } from "@/lib/data/calendar";
+import { withUser } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 
 export { CalendarSyncError } from "./errors";
@@ -24,8 +27,11 @@ const PROVIDER_LABEL: Record<SyncProvider, string> = {
   apple: "Apple Calendar",
 };
 
-export async function getSyncStatus(companyId: string): Promise<SyncStatusResponse> {
-  const connections = await listConnectionInfo(companyId);
+/**
+ * Stato di sincronizzazione dai soli metadati già letti dal DB.
+ * Nessuna I/O: isGoogleConfigured() legge solo l'env, Apple è sempre configurato.
+ */
+export function buildSyncStatus(connections: ConnectionInfo[]): SyncStatusResponse {
   const g = connections.find((c) => c.provider === "google");
   const a = connections.find((c) => c.provider === "apple");
 
@@ -44,6 +50,11 @@ export async function getSyncStatus(companyId: string): Promise<SyncStatusRespon
       lastSync: a?.lastSyncAt?.toISOString(),
     },
   };
+}
+
+export async function getSyncStatus(companyId: string): Promise<SyncStatusResponse> {
+  const connections = await withUser((tx) => listConnectionInfo(tx, companyId));
+  return buildSyncStatus(connections);
 }
 
 /** URL di autorizzazione Google; `state` è generato e verificato dalla route. */
@@ -86,7 +97,7 @@ export async function createAgendaEvent(
   input: CreateCalendarEventInput,
 ): Promise<CalendarEventData> {
   const provider = providerOfSource(input.source);
-  if (!provider) return createAgendaRow(companyId, input);
+  if (!provider) return withUser((tx) => createAgendaRow(tx, companyId, input));
 
   // Validazione prima di toccare il provider remoto
   resolveAgendaRange(input.date, input.startTime, input.endTime, getCalendarTimeZone());
@@ -104,12 +115,14 @@ export async function createAgendaEvent(
       ? await google.createEvent(companyId, remoteInput)
       : await apple.createEvent(companyId, remoteInput);
 
-  return createAgendaRow(companyId, input, { provider, externalId: remote.externalId });
+  return withUser((tx) =>
+    createAgendaRow(tx, companyId, input, { provider, externalId: remote.externalId }),
+  );
 }
 
 /** Elimina l'evento; se è collegato a un provider attivo, elimina anche sul calendario remoto. */
 export async function deleteAgendaEvent(companyId: string, id: string): Promise<void> {
-  const ref = await getEventRef(companyId, id);
+  const ref = await withUser((tx) => getEventRef(tx, companyId, id));
   if (!ref) throw new NotFoundError("Evento non trovato");
 
   const external = ref.external;
@@ -118,7 +131,7 @@ export async function deleteAgendaEvent(companyId: string, id: string): Promise<
     else await apple.deleteEvent(companyId, external.externalId);
   }
 
-  const deleted = await deleteAgendaRow(companyId, id);
+  const deleted = await withUser((tx) => deleteAgendaRow(tx, companyId, id));
   if (!deleted) throw new NotFoundError("Evento non trovato");
 }
 
@@ -134,7 +147,7 @@ function errorToMessage(err: unknown): string {
  * elimina i suoi eventi (la rimozione avviene solo con una lista valida).
  */
 export async function syncCompanyCalendars(companyId: string, from: Date, to: Date): Promise<SyncResult> {
-  const connections = await listConnectionInfo(companyId);
+  const connections = await withUser((tx) => listConnectionInfo(tx, companyId));
   const result: SyncResult = { imported: 0, removed: 0, errors: {} };
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
@@ -145,7 +158,9 @@ export async function syncCompanyCalendars(companyId: string, from: Date, to: Da
         provider === "google"
           ? await google.listEvents(companyId, fromIso, toIso)
           : await apple.listEvents(companyId, fromIso, toIso);
-      const counts = await upsertExternalEvents(companyId, provider, events, from, to);
+      const counts = await withUser((tx) =>
+        upsertExternalEvents(tx, companyId, provider, events, from, to),
+      );
       result.imported += counts.imported;
       result.removed += counts.removed;
       await markSynced(companyId, provider, new Date());

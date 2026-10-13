@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { withUser } from "@/lib/db";
+import type { Tx } from "@/lib/db";
 import { tasks, type Task as TaskRow } from "@/drizzle/schema";
 import type { ColumnId } from "@/app/types/maintenance";
 import type { BoardTask, CreateTaskInput, UpdateTaskInput } from "@/app/types/api";
@@ -40,87 +40,77 @@ function toBoardTask(row: TaskRow): BoardTask {
   };
 }
 
-export async function listTasks(companyId: string): Promise<BoardTask[]> {
-  const rows = await withUser((tx) =>
-    tx
-      .select()
-      .from(tasks)
-      .where(eq(tasks.companyId, companyId))
-      .orderBy(asc(tasks.columnId), asc(tasks.position))
-  );
+export async function listTasks(tx: Tx, companyId: string): Promise<BoardTask[]> {
+  const rows = await tx
+    .select()
+    .from(tasks)
+    .where(eq(tasks.companyId, companyId))
+    .orderBy(asc(tasks.columnId), asc(tasks.position));
   return rows.map(toBoardTask);
 }
 
-export async function createTask(companyId: string, input: CreateTaskInput): Promise<BoardTask> {
+/** Posizione = max+1 nella colonna, calcolata come sottoselect dentro lo stesso INSERT (1 round-trip). */
+export async function createTask(tx: Tx, companyId: string, input: CreateTaskInput): Promise<BoardTask> {
   const columnId = COLUMN_TO_DB[input.columnId];
 
-  return withUser(async (tx) => {
-    const maxRows = await tx
-      .select({ max: sql<number>`coalesce(max(${tasks.position}), -1)` })
-      .from(tasks)
-      .where(and(eq(tasks.companyId, companyId), eq(tasks.columnId, columnId)));
-    const position = Number(first(maxRows, "max position").max) + 1;
-
-    const inserted = await tx
-      .insert(tasks)
-      .values({
-        companyId,
-        title: input.title,
-        description: input.description ?? "",
-        priority: input.priority,
-        columnId,
-        position,
-        isAi: false,
-        customMetadata: input.assignedTo ? { assignedTo: input.assignedTo } : {},
-      })
-      .returning();
-    return toBoardTask(first(inserted, "insert tasks"));
-  });
+  const inserted = await tx
+    .insert(tasks)
+    .values({
+      companyId,
+      title: input.title,
+      description: input.description ?? "",
+      priority: input.priority,
+      columnId,
+      position: sql<number>`(select coalesce(max(${tasks.position}), -1) + 1 from ${tasks} where ${and(
+        eq(tasks.companyId, companyId),
+        eq(tasks.columnId, columnId)
+      )})`,
+      isAi: false,
+      customMetadata: input.assignedTo ? { assignedTo: input.assignedTo } : {},
+    })
+    .returning();
+  return toBoardTask(first(inserted, "insert tasks"));
 }
 
-export async function updateTask(companyId: string, id: string, patch: UpdateTaskInput): Promise<BoardTask> {
+export async function updateTask(tx: Tx, companyId: string, id: string, patch: UpdateTaskInput): Promise<BoardTask> {
   assertUuid(id, "id attività");
 
-  return withUser(async (tx) => {
-    const existingRows = await tx
-      .select()
-      .from(tasks)
-      .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
-      .limit(1);
-    const existing = existingRows[0];
-    if (!existing) throw new NotFoundError("Attività non trovata");
+  const existingRows = await tx
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
+    .limit(1);
+  const existing = existingRows[0];
+  if (!existing) throw new NotFoundError("Attività non trovata");
 
-    const meta = { ...(existing.customMetadata as Record<string, unknown>) };
-    if (patch.assignedTo !== undefined) {
-      if (patch.assignedTo.trim()) meta.assignedTo = patch.assignedTo;
-      else delete meta.assignedTo;
-    }
+  const meta = { ...(existing.customMetadata as Record<string, unknown>) };
+  if (patch.assignedTo !== undefined) {
+    if (patch.assignedTo.trim()) meta.assignedTo = patch.assignedTo;
+    else delete meta.assignedTo;
+  }
 
-    const updated = await tx
-      .update(tasks)
-      .set({
-        title: patch.title ?? existing.title,
-        description: patch.description ?? existing.description,
-        priority: patch.priority ?? existing.priority,
-        columnId: patch.columnId ? COLUMN_TO_DB[patch.columnId] : existing.columnId,
-        position: patch.position ?? existing.position,
-        customMetadata: meta,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
-      .returning();
-    return toBoardTask(first(updated, "update tasks"));
-  });
+  const updated = await tx
+    .update(tasks)
+    .set({
+      title: patch.title ?? existing.title,
+      description: patch.description ?? existing.description,
+      priority: patch.priority ?? existing.priority,
+      columnId: patch.columnId ? COLUMN_TO_DB[patch.columnId] : existing.columnId,
+      position: patch.position ?? existing.position,
+      customMetadata: meta,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
+    .returning();
+  return toBoardTask(first(updated, "update tasks"));
 }
 
 /** Ritorna false se l'attività non esiste nello studio. */
-export async function deleteTask(companyId: string, id: string): Promise<boolean> {
+export async function deleteTask(tx: Tx, companyId: string, id: string): Promise<boolean> {
   assertUuid(id, "id attività");
-  const deleted = await withUser((tx) =>
-    tx
-      .delete(tasks)
-      .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
-      .returning({ id: tasks.id })
-  );
+  const deleted = await tx
+    .delete(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.companyId, companyId)))
+    .returning({ id: tasks.id });
   return deleted.length > 0;
 }

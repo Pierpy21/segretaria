@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import {
   calendarEvents,
   conversations,
@@ -80,33 +81,38 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string): Promi
   );
   await tx.insert(tasks).values(taskRows);
 
+  // Conversazioni e messaggi in 2 INSERT totali: gli id sono generati lato app,
+  // così i messaggi possono referenziare le conversazioni senza RETURNING.
+  const conversationRows: NewConversation[] = [];
+  const messageRows: NewMessage[] = [];
   for (const chat of INITIAL_CHAT_MESSAGES) {
-    const [conversation] = await tx
-      .insert(conversations)
-      .values({
-        companyId,
-        name: chat.name,
-        snippet: chat.snippet,
-        lastMessageAt: now,
-        unreadCount: chat.unread,
-        isAi: chat.ai,
-        initials: chat.initials,
-        color: chat.color,
-      } satisfies NewConversation)
-      .returning({ id: conversations.id });
-    if (!conversation) throw new Error("Seed: conversazione non creata");
+    const conversationId = randomUUID();
+    conversationRows.push({
+      id: conversationId,
+      companyId,
+      name: chat.name,
+      snippet: chat.snippet,
+      lastMessageAt: now,
+      unreadCount: chat.unread,
+      isAi: chat.ai,
+      initials: chat.initials,
+      color: chat.color,
+    });
 
     // Lo storico mock è indicizzato per l'id della chat (stringa)
     const history = INITIAL_CONVERSATIONS[chat.id] ?? [];
-    const messageRows: NewMessage[] = history.map((m) => ({
-      companyId,
-      conversationId: conversation.id,
-      senderType: m.from === "ai-draft" ? "ai_draft" : m.from,
-      body: m.text,
-      sentAt: instantOf(today, m.time, tz),
-    }));
-    if (messageRows.length > 0) await tx.insert(messages).values(messageRows);
+    for (const m of history) {
+      messageRows.push({
+        companyId,
+        conversationId,
+        senderType: m.from === "ai-draft" ? "ai_draft" : m.from,
+        body: m.text,
+        sentAt: instantOf(today, m.time, tz),
+      });
+    }
   }
+  if (conversationRows.length > 0) await tx.insert(conversations).values(conversationRows);
+  if (messageRows.length > 0) await tx.insert(messages).values(messageRows);
 
   const quoteRows: NewQuote[] = INITIAL_QUOTES.map((q) => ({
     companyId,

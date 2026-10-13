@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { withUser, type Tx } from "@/lib/db";
+import type { Tx } from "@/lib/db";
 import { conversations, messages, type Conversation, type Message as MessageRow } from "@/drizzle/schema";
 import type { ChatListItem, Message, MessageFrom } from "@/app/types/messaging";
 import type { CreateMessageInput } from "@/app/types/api";
@@ -46,44 +46,42 @@ function toMessage(row: MessageRow, tz: string): Message {
   };
 }
 
-export async function listConversations(companyId: string): Promise<ChatListItem[]> {
+export async function listConversations(tx: Tx, companyId: string): Promise<ChatListItem[]> {
   const now = new Date();
-  const rows = await withUser((tx) =>
-    tx
-      .select()
-      .from(conversations)
-      .where(eq(conversations.companyId, companyId))
-      .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, asc(conversations.name))
-  );
+  const rows = await tx
+    .select()
+    .from(conversations)
+    .where(eq(conversations.companyId, companyId))
+    .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, asc(conversations.name));
   return rows.map((row) => toChatItem(row, now));
 }
 
-/** Verifica che la conversazione appartenga allo studio (altrimenti NotFound). */
-async function assertConversation(tx: Tx, companyId: string, conversationId: string): Promise<void> {
-  const rows = await tx
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.companyId, companyId)))
-    .limit(1);
-  if (!rows[0]) throw new NotFoundError("Conversazione non trovata");
-}
-
-export async function listMessages(companyId: string, conversationId: string): Promise<Message[]> {
+/**
+ * Conversazione + messaggi in UNA query (LEFT JOIN): zero righe = conversazione inesistente
+ * (NotFound), una riga con message null = conversazione senza messaggi.
+ */
+export async function listMessages(tx: Tx, companyId: string, conversationId: string): Promise<Message[]> {
   assertUuid(conversationId, "id conversazione");
   const tz = getCalendarTimeZone();
-  return withUser(async (tx) => {
-    await assertConversation(tx, companyId, conversationId);
-    const rows = await tx
-      .select()
-      .from(messages)
-      .where(and(eq(messages.conversationId, conversationId), eq(messages.companyId, companyId)))
-      .orderBy(asc(messages.sentAt));
-    return rows.map((row) => toMessage(row, tz));
-  });
+  const rows = await tx
+    .select({ message: messages })
+    .from(conversations)
+    .leftJoin(
+      messages,
+      and(eq(messages.conversationId, conversations.id), eq(messages.companyId, companyId)),
+    )
+    .where(and(eq(conversations.id, conversationId), eq(conversations.companyId, companyId)))
+    .orderBy(asc(messages.sentAt));
+  if (rows.length === 0) throw new NotFoundError("Conversazione non trovata");
+  return rows.flatMap((r) => (r.message ? [toMessage(r.message, tz)] : []));
 }
 
-/** Salva il messaggio, aggiorna snippet/ultimo messaggio e (se dal contatto) il contatore non letti. */
+/**
+ * Salva il messaggio e aggiorna snippet/ultimo messaggio e (se dal contatto) il contatore non letti.
+ * Prima l'UPDATE della conversazione (verifica appartenenza, NotFound), poi l'INSERT: 2 statement.
+ */
 export async function createMessage(
+  tx: Tx,
   companyId: string,
   conversationId: string,
   input: CreateMessageInput,
@@ -92,42 +90,37 @@ export async function createMessage(
   const tz = getCalendarTimeZone();
   const now = new Date();
 
-  return withUser(async (tx) => {
-    await assertConversation(tx, companyId, conversationId);
+  const updated = await tx
+    .update(conversations)
+    .set({
+      snippet: input.text.slice(0, SNIPPET_MAX),
+      lastMessageAt: now,
+      updatedAt: now,
+      ...(input.from === "contact" ? { unreadCount: sql`${conversations.unreadCount} + 1` } : {}),
+    })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.companyId, companyId)))
+    .returning({ id: conversations.id });
+  if (updated.length === 0) throw new NotFoundError("Conversazione non trovata");
 
-    const inserted = await tx
-      .insert(messages)
-      .values({
-        companyId,
-        conversationId,
-        senderType: FROM_TO_DB[input.from],
-        body: input.text,
-        sentAt: now,
-      })
-      .returning();
-
-    await tx
-      .update(conversations)
-      .set({
-        snippet: input.text.slice(0, SNIPPET_MAX),
-        lastMessageAt: now,
-        updatedAt: now,
-        ...(input.from === "contact" ? { unreadCount: sql`${conversations.unreadCount} + 1` } : {}),
-      })
-      .where(eq(conversations.id, conversationId));
-
-    return toMessage(first(inserted, "insert messages"), tz);
-  });
+  const inserted = await tx
+    .insert(messages)
+    .values({
+      companyId,
+      conversationId,
+      senderType: FROM_TO_DB[input.from],
+      body: input.text,
+      sentAt: now,
+    })
+    .returning();
+  return toMessage(first(inserted, "insert messages"), tz);
 }
 
-export async function markConversationRead(companyId: string, conversationId: string): Promise<void> {
+export async function markConversationRead(tx: Tx, companyId: string, conversationId: string): Promise<void> {
   assertUuid(conversationId, "id conversazione");
-  await withUser(async (tx) => {
-    const updated = await tx
-      .update(conversations)
-      .set({ unreadCount: 0, updatedAt: new Date() })
-      .where(and(eq(conversations.id, conversationId), eq(conversations.companyId, companyId)))
-      .returning({ id: conversations.id });
-    if (updated.length === 0) throw new NotFoundError("Conversazione non trovata");
-  });
+  const updated = await tx
+    .update(conversations)
+    .set({ unreadCount: 0, updatedAt: new Date() })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.companyId, companyId)))
+    .returning({ id: conversations.id });
+  if (updated.length === 0) throw new NotFoundError("Conversazione non trovata");
 }

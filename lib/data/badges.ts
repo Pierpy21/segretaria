@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
-import { withUser } from "@/lib/db";
+import type { Tx } from "@/lib/db";
 import { calendarEvents, conversations, patients, quotes, tasks } from "@/drizzle/schema";
 import type { SidebarBadges } from "@/app/types/api";
 import { getCalendarTimeZone, wallInZone, wallToUtcMs } from "@/lib/calendar-sync/time";
@@ -32,8 +32,11 @@ function todayBoundsUtc(nowMs: number, tz: string): { start: number; end: number
   return { start, end };
 }
 
-/** Contatori per la sidebar. Una sola transazione RLS, sole aggregazioni (nessuna riga caricata). */
-export async function getSidebarBadges(companyId: string): Promise<SidebarBadges> {
+/**
+ * Contatori per la sidebar in UNA sola query: sottoselect scalari, nessuna riga caricata.
+ * Il round-trip è unico; la tx è quella di withCompany.
+ */
+export async function getSidebarBadges(tx: Tx, companyId: string): Promise<SidebarBadges> {
   const nowMs = Date.now();
   const now = new Date(nowMs);
   const sevenDaysAgo = new Date(nowMs - SEVEN_DAYS_MS);
@@ -41,63 +44,55 @@ export async function getSidebarBadges(companyId: string): Promise<SidebarBadges
   const todayStart = new Date(start);
   const todayEnd = new Date(end);
 
-  return withUser(async (tx) => {
-    // Sequenziali: una sola connessione di transazione, niente query concorrenti.
-    const patientRows = await tx
-      .select({ value: sql<number>`count(*)` })
-      .from(patients)
-      .where(and(eq(patients.companyId, companyId), gte(patients.createdAt, sevenDaysAgo)));
+  const calendarCond = and(
+    eq(calendarEvents.companyId, companyId),
+    or(
+      // Eventi a orario: solo quelli non ancora iniziati, entro fine giornata.
+      and(
+        eq(calendarEvents.allDay, false),
+        gte(calendarEvents.startAt, now),
+        lt(calendarEvents.startAt, todayEnd)
+      ),
+      // Eventi di giornata intera: quelli con inizio nella giornata odierna.
+      and(
+        eq(calendarEvents.allDay, true),
+        gte(calendarEvents.startAt, todayStart),
+        lt(calendarEvents.startAt, todayEnd)
+      )
+    )
+  );
 
-    const chatRows = await tx
-      .select({ value: sql<number>`coalesce(sum(${conversations.unreadCount}), 0)` })
-      .from(conversations)
-      .where(eq(conversations.companyId, companyId));
+  const [row] = await tx.execute<{
+    patients: unknown;
+    chat: unknown;
+    calendar: unknown;
+    tasks: unknown;
+    quotes: unknown;
+  }>(sql`select
+      (select count(*) from ${patients} where ${and(
+        eq(patients.companyId, companyId),
+        gte(patients.createdAt, sevenDaysAgo)
+      )}) as patients,
+      (select coalesce(sum(${conversations.unreadCount}), 0) from ${conversations} where ${eq(
+        conversations.companyId,
+        companyId
+      )}) as chat,
+      (select count(*) from ${calendarEvents} where ${calendarCond}) as calendar,
+      (select count(*) from ${tasks} where ${and(
+        eq(tasks.companyId, companyId),
+        eq(tasks.priority, "high"),
+        inArray(tasks.columnId, ["todo", "in_progress"])
+      )}) as tasks,
+      (select count(*) from ${quotes} where ${and(
+        eq(quotes.companyId, companyId),
+        eq(quotes.status, "pending_ai")
+      )}) as quotes`);
 
-    const calendarRows = await tx
-      .select({ value: sql<number>`count(*)` })
-      .from(calendarEvents)
-      .where(
-        and(
-          eq(calendarEvents.companyId, companyId),
-          or(
-            // Eventi a orario: solo quelli non ancora iniziati, entro fine giornata.
-            and(
-              eq(calendarEvents.allDay, false),
-              gte(calendarEvents.startAt, now),
-              lt(calendarEvents.startAt, todayEnd)
-            ),
-            // Eventi di giornata intera: quelli con inizio nella giornata odierna.
-            and(
-              eq(calendarEvents.allDay, true),
-              gte(calendarEvents.startAt, todayStart),
-              lt(calendarEvents.startAt, todayEnd)
-            )
-          )
-        )
-      );
-
-    const taskRows = await tx
-      .select({ value: sql<number>`count(*)` })
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.companyId, companyId),
-          eq(tasks.priority, "high"),
-          inArray(tasks.columnId, ["todo", "in_progress"])
-        )
-      );
-
-    const quoteRows = await tx
-      .select({ value: sql<number>`count(*)` })
-      .from(quotes)
-      .where(and(eq(quotes.companyId, companyId), eq(quotes.status, "pending_ai")));
-
-    return {
-      patients: toCount(patientRows[0]?.value),
-      chat: toCount(chatRows[0]?.value),
-      calendar: toCount(calendarRows[0]?.value),
-      tasks: toCount(taskRows[0]?.value),
-      quotes: toCount(quoteRows[0]?.value),
-    };
-  });
+  return {
+    patients: toCount(row?.patients),
+    chat: toCount(row?.chat),
+    calendar: toCount(row?.calendar),
+    tasks: toCount(row?.tasks),
+    quotes: toCount(row?.quotes),
+  };
 }

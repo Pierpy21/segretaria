@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, gt, lt, notInArray, sql } from "drizzle-orm";
-import { withUser } from "@/lib/db";
+import type { Tx } from "@/lib/db";
 import { calendarEvents, type CalendarEvent, type NewCalendarEvent } from "@/drizzle/schema";
 import type { CalendarEventData, EventSource } from "@/app/types/calendar";
 import type { CreateCalendarEventInput } from "@/app/types/api";
@@ -12,6 +12,7 @@ import { assertUuid, chunk, dateInZone, first, instantOf, timeInZone } from "./f
 
 const DAY_MS = 86_400_000;
 const DEFAULT_DURATION_MS = 3_600_000;
+const UPSERT_CHUNK = 1000;
 
 export const SOURCE_TO_DB: Record<EventSource, CalendarEvent["source"]> = {
   "Google Calendar": "google_calendar",
@@ -57,21 +58,19 @@ function toEventData(row: CalendarEvent, tz: string): CalendarEventData {
 }
 
 /** Intervallo [from, to) in istanti UTC → eventi che si sovrappongono all'intervallo, ordinati per inizio. */
-export async function listEvents(companyId: string, from: Date, to: Date): Promise<CalendarEventData[]> {
+export async function listEvents(tx: Tx, companyId: string, from: Date, to: Date): Promise<CalendarEventData[]> {
   const tz = getCalendarTimeZone();
-  const rows = await withUser((tx) =>
-    tx
-      .select()
-      .from(calendarEvents)
-      .where(
-        and(
-          eq(calendarEvents.companyId, companyId),
-          lt(calendarEvents.startAt, to),
-          gt(calendarEvents.endAt, from),
-        ),
-      )
-      .orderBy(asc(calendarEvents.startAt))
-  );
+  const rows = await tx
+    .select()
+    .from(calendarEvents)
+    .where(
+      and(
+        eq(calendarEvents.companyId, companyId),
+        lt(calendarEvents.startAt, to),
+        gt(calendarEvents.endAt, from),
+      ),
+    )
+    .orderBy(asc(calendarEvents.startAt));
   return rows.map((row) => toEventData(row, tz));
 }
 
@@ -95,6 +94,7 @@ export function resolveAgendaRange(
  * (il provider va creato prima dal chiamante, vedi lib/calendar-sync).
  */
 export async function createEvent(
+  tx: Tx,
   companyId: string,
   input: CreateCalendarEventInput,
   external?: ExternalRef,
@@ -110,43 +110,39 @@ export async function createEvent(
     ? external.provider === "google" ? "google_calendar" : "apple_calendar"
     : SOURCE_TO_DB[input.source];
 
-  const row = await withUser(async (tx) => {
-    const inserted = await tx
-      .insert(calendarEvents)
-      .values({
-        companyId,
-        title: input.title,
-        description: input.description ?? "",
-        startAt,
-        endAt,
-        allDay: false,
-        source,
-        isAiGenerated: input.source === "AI Secretary",
-        externalProvider: external?.provider ?? null,
-        externalId: external?.externalId ?? null,
-      })
-      .returning();
-    return first(inserted, "insert calendar_events");
-  });
-  return toEventData(row, tz);
+  const inserted = await tx
+    .insert(calendarEvents)
+    .values({
+      companyId,
+      title: input.title,
+      description: input.description ?? "",
+      startAt,
+      endAt,
+      allDay: false,
+      source,
+      isAiGenerated: input.source === "AI Secretary",
+      externalProvider: external?.provider ?? null,
+      externalId: external?.externalId ?? null,
+    })
+    .returning();
+  return toEventData(first(inserted, "insert calendar_events"), tz);
 }
 
 /** Riferimento esterno di un evento (null se locale). Null se non esiste nello studio. */
 export async function getEventRef(
+  tx: Tx,
   companyId: string,
   id: string,
 ): Promise<{ external: ExternalRef | null } | null> {
   assertUuid(id, "id evento");
-  const rows = await withUser((tx) =>
-    tx
-      .select({
-        externalProvider: calendarEvents.externalProvider,
-        externalId: calendarEvents.externalId,
-      })
-      .from(calendarEvents)
-      .where(and(eq(calendarEvents.id, id), eq(calendarEvents.companyId, companyId)))
-      .limit(1)
-  );
+  const rows = await tx
+    .select({
+      externalProvider: calendarEvents.externalProvider,
+      externalId: calendarEvents.externalId,
+    })
+    .from(calendarEvents)
+    .where(and(eq(calendarEvents.id, id), eq(calendarEvents.companyId, companyId)))
+    .limit(1);
   const row = rows[0];
   if (!row) return null;
   return {
@@ -158,14 +154,12 @@ export async function getEventRef(
 }
 
 /** Elimina un evento locale/salvato. Ritorna false se non esiste nello studio. */
-export async function deleteEvent(companyId: string, id: string): Promise<boolean> {
+export async function deleteEvent(tx: Tx, companyId: string, id: string): Promise<boolean> {
   assertUuid(id, "id evento");
-  const deleted = await withUser((tx) =>
-    tx
-      .delete(calendarEvents)
-      .where(and(eq(calendarEvents.id, id), eq(calendarEvents.companyId, companyId)))
-      .returning({ id: calendarEvents.id })
-  );
+  const deleted = await tx
+    .delete(calendarEvents)
+    .where(and(eq(calendarEvents.id, id), eq(calendarEvents.companyId, companyId)))
+    .returning({ id: calendarEvents.id });
   return deleted.length > 0;
 }
 
@@ -210,6 +204,7 @@ function toExternalRow(
  * Chiamare solo con una lista completa e valida (mai in caso di errore del provider).
  */
 export async function upsertExternalEvents(
+  tx: Tx,
   companyId: string,
   provider: SyncProvider,
   events: SyncedEvent[],
@@ -235,31 +230,30 @@ export async function upsertExternalEvents(
     gt(calendarEvents.endAt, from),
   );
 
-  return withUser(async (tx) => {
-    for (const block of chunk(values, 200)) {
-      await tx
-        .insert(calendarEvents)
-        .values(block)
-        .onConflictDoUpdate({
-          target: [calendarEvents.companyId, calendarEvents.externalProvider, calendarEvents.externalId],
-          targetWhere: sql`${calendarEvents.externalId} is not null`,
-          set: {
-            title: sql`excluded.title`,
-            description: sql`excluded.description`,
-            startAt: sql`excluded.start_at`,
-            endAt: sql`excluded.end_at`,
-            allDay: sql`excluded.all_day`,
-            source: sql`excluded.source`,
-            updatedAt: sql`now()`,
-          },
-        });
-    }
+  // Un INSERT ... ON CONFLICT per blocco (1000 righe ≈ 14k parametri, sotto il limite di 65535).
+  for (const block of chunk(values, UPSERT_CHUNK)) {
+    await tx
+      .insert(calendarEvents)
+      .values(block)
+      .onConflictDoUpdate({
+        target: [calendarEvents.companyId, calendarEvents.externalProvider, calendarEvents.externalId],
+        targetWhere: sql`${calendarEvents.externalId} is not null`,
+        set: {
+          title: sql`excluded.title`,
+          description: sql`excluded.description`,
+          startAt: sql`excluded.start_at`,
+          endAt: sql`excluded.end_at`,
+          allDay: sql`excluded.all_day`,
+          source: sql`excluded.source`,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
 
-    const removed = await tx
-      .delete(calendarEvents)
-      .where(keepIds.length > 0 ? and(inRange, notInArray(calendarEvents.externalId, keepIds)) : inRange)
-      .returning({ id: calendarEvents.id });
+  const removed = await tx
+    .delete(calendarEvents)
+    .where(keepIds.length > 0 ? and(inRange, notInArray(calendarEvents.externalId, keepIds)) : inRange)
+    .returning({ id: calendarEvents.id });
 
-    return { imported: values.length, removed: removed.length };
-  });
+  return { imported: values.length, removed: removed.length };
 }
