@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "./components/layout/sidebar";
 import Header from "./components/layout/header";
 import KpiCards from "./components/kpi-cards";
@@ -14,7 +14,7 @@ import CalendarPage from "./components/modules/calendar-page";
 import QuotesPage from "./components/modules/quotes-page";
 import MaintenancePage from "./components/modules/maintenance-page";
 import PatientsPage from "./components/modules/patients-page";
-import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3, Users } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Calendar, Wrench, FileText, Bot, Clock3, Users, X } from "lucide-react";
 import { INITIAL_QUOTES } from "@/app/data/quotes";
 import { STATUS_META } from "@/app/constants/quotes";
 import { INITIAL_CHAT_MESSAGES, INITIAL_CONVERSATIONS } from "@/app/data/messaging";
@@ -125,7 +125,27 @@ function ComingSoon({ label }: { label: string }) {
 export default function App() {
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const { title, subtitle } = pageHeadings[activeNav] ?? { title: activeNav, subtitle: "Presto disponibile" };
+
+  // Ritorno da OAuth / deep link: ?module=calendar&sync=google-ok|google-error
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const moduleParam = params.get("module");
+    const sync = params.get("sync");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizzazione con URL (deep link/OAuth)
+    if (moduleParam === "calendar") setActiveNav("Agenda & Appuntamenti");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizzazione con URL (deep link/OAuth)
+    if (sync === "google-ok") setSyncNotice({ type: "success", text: "Google Calendar collegato con successo." });
+    else if (sync === "google-error") setSyncNotice({ type: "error", text: "Connessione a Google Calendar non riuscita. Riprova." });
+    if (moduleParam || sync) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  useEffect(() => {
+    if (!syncNotice) return;
+    const timer = setTimeout(() => setSyncNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [syncNotice]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
@@ -147,6 +167,20 @@ export default function App() {
 
         {/* ── CONTENT AREA ── */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+
+          {/* Sync notice (ritorno OAuth) */}
+          {syncNotice && (
+            <div
+              role="status"
+              className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-semibold
+                ${syncNotice.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}
+            >
+              <span>{syncNotice.text}</span>
+              <button onClick={() => setSyncNotice(null)} className="p-0.5 opacity-60 hover:opacity-100" title="Chiudi">
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           {/* Page Heading */}
           <div>

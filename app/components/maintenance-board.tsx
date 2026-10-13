@@ -34,7 +34,7 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
           <div
             key={col}
             className="p-3 flex flex-col gap-2 border-r border-slate-200 last:border-r-0 [background-color:var(--col-bg)]"
-            style={{ ["--col-bg" as any]: bg }}
+            style={{ ["--col-bg" as string]: bg }}
           >
             {/* Column Header */}
             <div className="flex items-center gap-1.5 mb-1">
@@ -43,7 +43,7 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
               <span
                 className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full [background-color:var(--badge-bg-soft)]"
                 style={{ 
-                  ["--badge-bg-soft" as any]: `${accent}25`,
+                  ["--badge-bg-soft" as string]: `${accent}25`,
                   color: accent 
                 }}
               >

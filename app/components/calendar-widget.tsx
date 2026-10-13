@@ -46,7 +46,7 @@ export default function CalendarWidget({ weekDays, reminders, priorityColor }: C
                 key={i}
                 className="rounded-lg px-1.5 py-1.5 border-l-[2.5px] [background-color:var(--ev-soft-bg)]"
                 style={{ 
-                  ["--ev-soft-bg" as any]: `${ev.color}14`,
+                  ["--ev-soft-bg" as string]: `${ev.color}14`,
                   borderColor: ev.color 
                 }}
               >

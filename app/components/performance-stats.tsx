@@ -59,7 +59,7 @@ export default function PerformanceStats() {
             <Tooltip
               contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "none" }}
               cursor={{ fill: "#f8fafc" }}
-              formatter={(v: any) => [`${v}s`, "Risposta"]}
+              formatter={(v) => [`${v}s`, "Risposta"]}
             />
             <Bar dataKey="sec" fill="#3b82f6" radius={[4, 4, 0, 0]} />
           </BarChart>
@@ -89,7 +89,7 @@ export default function PerformanceStats() {
             <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
             <Tooltip
               contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "none" }}
-              formatter={(v: any) => [`${v}%`, "Presenze"]}
+              formatter={(v) => [`${v}%`, "Presenze"]}
             />
             <Line
               type="monotone"

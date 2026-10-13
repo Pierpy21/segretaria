@@ -68,8 +68,8 @@ export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesT
                     <span
                       className="px-2 py-1 rounded-full text-[10px] font-bold whitespace-nowrap [background-color:var(--status-bg)] [color:var(--status-txt)]"
                       style={{ 
-                        ["--status-bg" as any]: s.bg, 
-                        ["--status-txt" as any]: s.text 
+                        ["--status-bg" as string]: s.bg, 
+                        ["--status-txt" as string]: s.text 
                       }}
                     >
                       {s.label}

@@ -103,7 +103,7 @@ export default function QuotesPage() {
           </div>
         ) : (
           <QuotesTable
-            data={filtered as any}
+            data={filtered}
             statusMap={Object.fromEntries(
               Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
             )}

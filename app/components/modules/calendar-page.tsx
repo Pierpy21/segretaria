@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
   Plus,
@@ -10,52 +10,257 @@ import {
   XCircle,
   RefreshCw,
   Archive,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
 } from "lucide-react";
-import { MONTH_LABEL, DAYS_OF_WEEK, MONTH_GRID, INITIAL_EVENTS, INITIAL_REMINDERS } from "@/app/data/calendar";
+import { DAYS_OF_WEEK, INITIAL_EVENTS, INITIAL_REMINDERS } from "@/app/data/calendar";
 import { PRIORITY_COLOR, SOURCE_META } from "@/app/constants/calendar";
+import {
+  ALL_DAY_LABEL,
+  addDays,
+  addMinutesToTime,
+  addMonths,
+  buildMonthGrid,
+  buildWeek,
+  formatLongDate,
+  formatMonthLabel,
+  formatTimeLocal,
+  formatWeekLabel,
+  getVisibleRange,
+  localDateTime,
+  parseISODate,
+  stableEventId,
+  toISODate,
+} from "@/app/lib/calendar-dates";
 import type { ViewMode, ConnectionStatus, CalendarEventData, ReminderData, EventSource, ReminderPriority } from "@/app/types/calendar";
+import type {
+  ApiResult,
+  CreateEventInput,
+  ProviderStatus,
+  SyncedEvent,
+  SyncProvider,
+  SyncStatusResponse,
+} from "@/app/types/calendar-sync";
 
-let nextEventId = INITIAL_EVENTS.length + 1;
+const PROVIDER_LABEL: Record<SyncProvider, string> = {
+  google: "Google Calendar",
+  apple: "Apple Calendar",
+};
+
+interface EventForm {
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  description: string;
+  source: EventSource;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Wrapper fetch che non lancia mai: errori di rete o JSON diventano ApiResult con success false */
+async function callApi<T>(url: string, init?: RequestInit): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(url, init);
+    return (await res.json()) as ApiResult<T>;
+  } catch {
+    return { success: false, error: "Errore di rete. Riprova." };
+  }
+}
+
+function toCalendarEvent(ev: SyncedEvent): CalendarEventData {
+  const source: EventSource = ev.provider === "google" ? "Google Calendar" : "Apple Calendar";
+  return {
+    id: stableEventId(`${ev.provider}:${ev.externalId}`),
+    title: ev.title || "(senza titolo)",
+    date: ev.allDay ? ev.start.slice(0, 10) : toISODate(new Date(ev.start)),
+    time: ev.allDay ? ALL_DAY_LABEL : formatTimeLocal(ev.start),
+    endTime: ev.allDay ? undefined : formatTimeLocal(ev.end),
+    color: SOURCE_META[source].dot,
+    source,
+    description: ev.description || "Nessuna descrizione fornita.",
+    isAiGenerated: false,
+    externalId: ev.externalId,
+  };
+}
+
+/** "Tutto il giorno" prima degli eventi con orario */
+const sortTime = (e: CalendarEventData) => (e.time === ALL_DAY_LABEL ? "" : e.time);
+
+function emptyForm(date: string): EventForm {
+  return { title: "", date, startTime: "09:00", endTime: "10:00", description: "", source: "Manual" };
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   const [view, setView] = useState<ViewMode>("Month");
-  const [events, setEvents] = useState<CalendarEventData[]>(INITIAL_EVENTS);
+  const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
+  const [localEvents, setLocalEvents] = useState<CalendarEventData[]>(INITIAL_EVENTS);
+  const [syncedEvents, setSyncedEvents] = useState<CalendarEventData[]>([]);
   const [reminders, setReminders] = useState<ReminderData[]>(INITIAL_REMINDERS);
-  const [selectedDateNum, setSelectedDateNum] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventData | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [googleStatus, setGoogleStatus] = useState<ConnectionStatus>("connected");
-  const [appleStatus, setAppleStatus] = useState<ConnectionStatus>("disconnected");
 
-  const [form, setForm] = useState({
-    title: "",
-    time: "",
-    dateNum: "1",
-    description: "",
-    source: "Manual" as EventSource,
-  });
+  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [eventErrors, setEventErrors] = useState<string[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Partial<Record<SyncProvider, boolean>>>({});
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  function eventsFor(dateNum: number) {
-    return events.filter(e => e.dateNum === dateNum).sort((a, b) => a.time.localeCompare(b.time));
+  const [form, setForm] = useState<EventForm>(() => emptyForm(toISODate(new Date())));
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const nextLocalId = useRef(Math.max(...INITIAL_EVENTS.map(e => e.id)) + 1);
+
+  // Intervallo visibile: cambia solo quando cambia la vista o la data di riferimento (stringhe → deps stabili)
+  const { from, to } = getVisibleRange(view, selectedDate);
+
+  // Stato provider
+  useEffect(() => {
+    let cancelled = false;
+    callApi<SyncStatusResponse>("/api/calendar/status").then(res => {
+      if (cancelled) return;
+      if (res.success) {
+        setSyncStatus(res.data);
+        setStatusError(null);
+      } else {
+        setStatusError(res.error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Eventi del range visibile
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- stato di caricamento legato alla fetch esterna
+    setLoadingEvents(true);
+    callApi<{ events: SyncedEvent[]; errors: Partial<Record<SyncProvider, string>> }>(
+      `/api/calendar/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    ).then(res => {
+      if (cancelled) return;
+      if (res.success) {
+        setSyncedEvents(res.data.events.map(toCalendarEvent));
+        setEventErrors(
+          Object.entries(res.data.errors).map(([p, msg]) => `${PROVIDER_LABEL[p as SyncProvider]}: ${msg}`)
+        );
+      } else {
+        setEventErrors([res.error]);
+      }
+      setLoadingEvents(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to, reloadKey]);
+
+  const allEvents = useMemo(() => [...localEvents, ...syncedEvents], [localEvents, syncedEvents]);
+
+  function eventsFor(date: string) {
+    return allEvents.filter(e => e.date === date).sort((a, b) => sortTime(a).localeCompare(sortTime(b)));
   }
 
-  function openDay(dateNum: number) {
-    setSelectedDateNum(dateNum);
+  const selectedDay = parseISODate(selectedDate);
+  const monthCells = buildMonthGrid(selectedDay.getFullYear(), selectedDay.getMonth());
+  const weekCells = useMemo(() => buildWeek(selectedDate), [selectedDate]);
+
+  const headerLabel =
+    view === "Month" ? formatMonthLabel(selectedDate) : view === "Week" ? formatWeekLabel(selectedDate) : formatLongDate(selectedDate);
+
+  const googleStatus = syncStatus?.google;
+  const appleStatus = syncStatus?.apple;
+  const googleConnected = googleStatus?.connected ?? false;
+  const appleConnected = appleStatus?.connected ?? false;
+
+  function shiftDate(dir: -1 | 1) {
+    setSelectedDate(prev => (view === "Month" ? addMonths(prev, dir) : addDays(prev, view === "Week" ? 7 * dir : dir)));
+  }
+
+  function openDay(date: string) {
+    setSelectedDate(date);
     setView("Day");
   }
 
-  function toggleConnection(service: "google" | "apple") {
-    const status = service === "google" ? googleStatus : appleStatus;
-    const setStatus = service === "google" ? setGoogleStatus : setAppleStatus;
-    if (status === "syncing") return;
-    if (status === "connected") {
-      setStatus("disconnected");
+  function refresh() {
+    setReloadKey(k => k + 1);
+  }
+
+  function clearErrors() {
+    setActionError(null);
+    setEventErrors([]);
+    setStatusError(null);
+  }
+
+  function setProviderBusy(provider: SyncProvider, value: boolean) {
+    setBusy(prev => ({ ...prev, [provider]: value }));
+  }
+
+  async function connectApple() {
+    setActionError(null);
+    setProviderBusy("apple", true);
+    const res = await callApi<ProviderStatus>("/api/calendar/apple/connect", { method: "POST" });
+    setProviderBusy("apple", false);
+    if (!res.success) {
+      setActionError(`Apple Calendar: ${res.error}`);
       return;
     }
-    setStatus("syncing");
-    setTimeout(() => setStatus("connected"), 1400);
+    setSyncStatus(prev => (prev ? { ...prev, apple: res.data } : prev));
+    refresh();
+  }
+
+  async function disconnectProvider(provider: SyncProvider) {
+    const label = PROVIDER_LABEL[provider];
+    if (!window.confirm(`Disconnettere ${label}? Gli eventi sincronizzati non saranno più mostrati.`)) return;
+    setActionError(null);
+    setProviderBusy(provider, true);
+    const res = await callApi<null>(`/api/calendar/${provider}/connect`, { method: "DELETE" });
+    setProviderBusy(provider, false);
+    if (!res.success) {
+      setActionError(`${label}: ${res.error}`);
+      return;
+    }
+    refresh();
+  }
+
+  function handleProviderClick(provider: SyncProvider) {
+    const st = provider === "google" ? googleStatus : appleStatus;
+    if (!st?.configured || busy[provider]) return;
+    if (st.connected) {
+      void disconnectProvider(provider);
+      return;
+    }
+    if (provider === "google") {
+      window.location.href = "/api/calendar/google/connect";
+      return;
+    }
+    void connectApple();
+  }
+
+  async function deleteSyncedEvent(ev: CalendarEventData) {
+    if (!ev.externalId) return;
+    const provider: SyncProvider = ev.source === "Google Calendar" ? "google" : "apple";
+    if (!window.confirm(`Eliminare "${ev.title}" da ${PROVIDER_LABEL[provider]}?`)) return;
+    setActionError(null);
+    setDeleting(true);
+    const res = await callApi<null>(
+      `/api/calendar/events?provider=${provider}&id=${encodeURIComponent(ev.externalId)}`,
+      { method: "DELETE" }
+    );
+    setDeleting(false);
+    if (!res.success) {
+      setActionError(res.error);
+      return;
+    }
+    setSyncedEvents(prev => prev.filter(e => e.id !== ev.id));
+    setSelectedEvent(null);
   }
 
   function toggleReminder(id: number) {
@@ -68,46 +273,139 @@ export default function CalendarPage() {
     setReminders(prev => prev.map(r => (r.id === id ? { ...r, status: "archived" } : r)));
   }
 
-  function submitNewEvent() {
-    if (!form.title.trim() || !form.time.trim()) return;
-    const dateNum = Math.min(31, Math.max(1, Number(form.dateNum) || 1));
-    const meta = SOURCE_META[form.source];
-    setEvents(prev => [
-      ...prev,
-      {
-        id: nextEventId++,
-        title: form.title.trim(),
-        time: form.time.trim(),
-        dateNum,
-        color: meta.dot,
-        source: form.source,
-        description: form.description.trim() || "Nessuna descrizione fornita.",
-        isAiGenerated: false,
-      },
-    ]);
-    setForm({ title: "", time: "", dateNum: "1", description: "", source: "Manual" });
-    setShowAddModal(false);
+  function openAddModal() {
+    setForm(emptyForm(selectedDate));
+    setFormError(null);
+    setShowAddModal(true);
   }
 
-  const SelectedSourceIcon = selectedEvent ? SOURCE_META[selectedEvent.source].icon : null;
+  function closeAddModal() {
+    setShowAddModal(false);
+    setFormError(null);
+  }
+
+  async function submitNewEvent() {
+    const title = form.title.trim();
+    if (!title || !form.date || !form.startTime || !form.endTime) {
+      setFormError("Compila titolo, data e orari.");
+      return;
+    }
+    if (form.endTime <= form.startTime) {
+      setFormError("L'orario di fine deve essere successivo all'inizio.");
+      return;
+    }
+
+    const description = form.description.trim();
+
+    if (form.source === "Manual") {
+      const id = nextLocalId.current++;
+      setLocalEvents(prev => [
+        ...prev,
+        {
+          id,
+          title,
+          date: form.date,
+          time: form.startTime,
+          endTime: form.endTime,
+          color: SOURCE_META.Manual.dot,
+          source: "Manual",
+          description: description || "Nessuna descrizione fornita.",
+          isAiGenerated: false,
+        },
+      ]);
+      closeAddModal();
+      return;
+    }
+
+    const provider: SyncProvider = form.source === "Google Calendar" ? "google" : "apple";
+    const body: CreateEventInput = {
+      provider,
+      title,
+      description,
+      start: localDateTime(form.date, form.startTime),
+      end: localDateTime(form.date, form.endTime),
+    };
+
+    setFormError(null);
+    setSubmitting(true);
+    const res = await callApi<SyncedEvent>("/api/calendar/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setSubmitting(false);
+
+    if (!res.success) {
+      setFormError(res.error);
+      return;
+    }
+    const created = toCalendarEvent(res.data);
+    setSyncedEvents(prev => [...prev.filter(e => e.id !== created.id), created]);
+    closeAddModal();
+  }
+
   const activeReminders = reminders.filter(r => r.status === "active");
   const resolvedReminders = reminders.filter(r => r.status === "resolved");
   const priorityGroups: { priority: ReminderPriority; items: ReminderData[] }[] = (
     ["high", "medium", "low"] as ReminderPriority[]
   ).map(priority => ({ priority, items: activeReminders.filter(r => r.priority === priority) }));
 
+  const hasErrors = Boolean(actionError || statusError || eventErrors.length > 0);
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
       {/* ── Main column ── */}
       <div className="space-y-4 min-w-0">
+        {hasErrors && (
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="space-y-0.5 min-w-0">
+              {actionError && <p>{actionError}</p>}
+              {statusError && <p>Stato calendari: {statusError}</p>}
+              {eventErrors.map(msg => (
+                <p key={msg}>{msg}</p>
+              ))}
+            </div>
+            <button onClick={clearErrors} className="p-0.5 rounded text-red-400 hover:text-red-700 flex-shrink-0" title="Chiudi">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Calendar card */}
         <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Agenda & Appuntamenti Studio</h2>
-              <p className="text-xs text-slate-500">{MONTH_LABEL} — Planning Poltrone Odontoiatriche</p>
+              <p className="text-xs text-slate-500">
+                {headerLabel} — Planning Poltrone Odontoiatriche
+                {loadingEvents && <span className="ml-2 text-[10px] text-slate-400">Aggiornamento…</span>}
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => shiftDate(-1)}
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Precedente"
+                  aria-label="Precedente"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button
+                  onClick={() => setSelectedDate(toISODate(new Date()))}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  Oggi
+                </button>
+                <button
+                  onClick={() => shiftDate(1)}
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Successivo"
+                  aria-label="Successivo"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
               <div className="flex gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
                 {([["Month", "Mese"], ["Week", "Settimana"], ["Day", "Giorno"]] as const).map(([v, label]) => (
                   <button
@@ -121,7 +419,7 @@ export default function CalendarPage() {
                 ))}
               </div>
               <button
-                onClick={() => setShowAddModal(true)}
+                onClick={openAddModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
               >
                 <Plus size={13} /> Nuovo Appuntamento
@@ -141,12 +439,12 @@ export default function CalendarPage() {
                 ))}
               </div>
               <div className="grid grid-cols-7">
-                {MONTH_GRID.map((cell, i) => {
-                  const cellEvents = cell.inMonth ? eventsFor(cell.dateNum) : [];
+                {monthCells.map(cell => {
+                  const cellEvents = cell.inMonth ? eventsFor(cell.date) : [];
                   return (
                     <button
-                      key={i}
-                      onClick={() => cell.inMonth && openDay(cell.dateNum)}
+                      key={cell.date}
+                      onClick={() => cell.inMonth && openDay(cell.date)}
                       disabled={!cell.inMonth}
                       className={`min-h-[92px] p-1.5 flex flex-col gap-1 border-b border-r border-slate-100 text-left
                         ${!cell.inMonth ? "bg-slate-50/60 cursor-default" : "hover:bg-slate-50 cursor-pointer"}`}
@@ -183,21 +481,21 @@ export default function CalendarPage() {
           {/* Week view */}
           {view === "Week" && (
             <div className="grid grid-cols-7">
-              {MONTH_GRID.slice(0, 7).map((cell, i) => (
-                <div key={i} className="p-2.5 flex flex-col gap-1.5 border-r border-slate-100 last:border-r-0 min-h-[220px]">
+              {weekCells.map((cell, i) => (
+                <div key={cell.date} className="p-2.5 flex flex-col gap-1.5 border-r border-slate-100 last:border-r-0 min-h-[220px]">
                   <div className="text-center mb-1">
                     <p className={`text-[10px] font-bold uppercase tracking-wider ${cell.isToday ? "text-blue-600" : "text-slate-400"}`}>
                       {DAYS_OF_WEEK[i]}
                     </p>
                     <button
-                      onClick={() => openDay(cell.dateNum)}
+                      onClick={() => openDay(cell.date)}
                       className={`text-sm font-bold mt-0.5 w-7 h-7 rounded-full flex items-center justify-center mx-auto
                         ${cell.isToday ? "bg-blue-600 text-white" : "bg-transparent text-slate-700 hover:bg-slate-100"}`}
                     >
                       {cell.dateNum}
                     </button>
                   </div>
-                  {eventsFor(cell.dateNum).map(ev => (
+                  {eventsFor(cell.date).map(ev => (
                     <EventChip key={ev.id} event={ev} onClick={() => setSelectedEvent(ev)} />
                   ))}
                 </div>
@@ -208,13 +506,11 @@ export default function CalendarPage() {
           {/* Day view */}
           {view === "Day" && (
             <div className="p-5 space-y-2.5">
-              <p className="text-xs font-semibold text-slate-500 mb-2">
-                {DAYS_OF_WEEK[MONTH_GRID.findIndex(c => c.inMonth && c.dateNum === selectedDateNum) % 7]}, {MONTH_LABEL.replace("July", "Jul")} {selectedDateNum}
-              </p>
-              {eventsFor(selectedDateNum).length === 0 && (
+              <p className="text-xs font-semibold text-slate-500 mb-2">{formatLongDate(selectedDate)}</p>
+              {eventsFor(selectedDate).length === 0 && (
                 <p className="text-xs text-slate-400 italic">Nessun evento in agenda per questo giorno.</p>
               )}
-              {eventsFor(selectedDateNum).map(ev => (
+              {eventsFor(selectedDate).map(ev => (
                 <EventChip key={ev.id} event={ev} onClick={() => setSelectedEvent(ev)} expanded />
               ))}
             </div>
@@ -225,20 +521,11 @@ export default function CalendarPage() {
         {selectedEvent && (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-start gap-3">
             <span className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: selectedEvent.color }} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <p className="text-sm font-semibold text-slate-900">{selectedEvent.title}</p>
-                {selectedEvent.isAiGenerated && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                    <Bot size={8} /> AI Scheduled
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 mb-1.5 flex items-center gap-1">
-                {SelectedSourceIcon && <SelectedSourceIcon size={11} />} {selectedEvent.time} · {selectedEvent.source}
-              </p>
-              <p className="text-xs text-slate-600">{selectedEvent.description}</p>
-            </div>
+            <EventDetail
+              event={selectedEvent}
+              deleting={deleting}
+              onDelete={() => deleteSyncedEvent(selectedEvent)}
+            />
             <button onClick={() => setSelectedEvent(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 flex-shrink-0">
               <X size={14} />
             </button>
@@ -250,10 +537,31 @@ export default function CalendarPage() {
       <div className="space-y-4">
         {/* Sync status */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <p className="text-xs font-bold text-slate-700 mb-3">Calendar Sync</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-slate-700">Calendar Sync</p>
+            <button
+              onClick={refresh}
+              disabled={loadingEvents}
+              className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-slate-900 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw size={11} className={loadingEvents ? "animate-spin" : ""} /> Sincronizza ora
+            </button>
+          </div>
           <div className="space-y-2">
-            <SyncRow label="Google Calendar" status={googleStatus} onClick={() => toggleConnection("google")} />
-            <SyncRow label="Apple Calendar" status={appleStatus} onClick={() => toggleConnection("apple")} />
+            <SyncRow
+              label="Google Calendar"
+              provider={googleStatus}
+              loadingStatus={!syncStatus && !statusError}
+              busy={Boolean(busy.google)}
+              onClick={() => handleProviderClick("google")}
+            />
+            <SyncRow
+              label="Apple Calendar"
+              provider={appleStatus}
+              loadingStatus={!syncStatus && !statusError}
+              busy={Boolean(busy.apple)}
+              onClick={() => handleProviderClick("apple")}
+            />
           </div>
         </div>
 
@@ -320,7 +628,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">
               <p className="text-base font-bold text-slate-900">Nuovo Appuntamento Studio</p>
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={closeAddModal}
                 className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                 title="Chiudi"
               >
@@ -339,26 +647,40 @@ export default function CalendarPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Data</label>
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={e => setForm({ ...form, date: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">Orario Visita</label>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">Inizio</label>
                   <input
-                    value={form.time}
-                    onChange={e => setForm({ ...form, time: e.target.value })}
-                    placeholder="Es. 09:30 o 15:00"
-                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                    type="time"
+                    value={form.startTime}
+                    onChange={e => {
+                      const startTime = e.target.value;
+                      setForm({
+                        ...form,
+                        startTime,
+                        endTime: startTime >= form.endTime ? addMinutesToTime(startTime, 60) : form.endTime,
+                      });
+                    }}
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">Giorno (del mese)</label>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">Fine</label>
                   <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={form.dateNum}
-                    onChange={e => setForm({ ...form, dateNum: e.target.value })}
-                    placeholder="1-31"
-                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                    type="time"
+                    value={form.endTime}
+                    onChange={e => setForm({ ...form, endTime: e.target.value })}
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                   />
                 </div>
               </div>
@@ -371,8 +693,12 @@ export default function CalendarPage() {
                   className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-bold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 cursor-pointer"
                 >
                   <option value="Manual" className="text-slate-900 font-semibold">Poltrona Studio (Manuale)</option>
-                  <option value="Google Calendar" className="text-slate-900 font-semibold">Google Calendar Studio</option>
-                  <option value="Apple Calendar" className="text-slate-900 font-semibold">Apple Calendar</option>
+                  <option value="Google Calendar" disabled={!googleConnected} className="text-slate-900 font-semibold">
+                    Google Calendar Studio{googleConnected ? "" : " (non connesso)"}
+                  </option>
+                  <option value="Apple Calendar" disabled={!appleConnected} className="text-slate-900 font-semibold">
+                    Apple Calendar{appleConnected ? "" : " (non connesso)"}
+                  </option>
                 </select>
               </div>
 
@@ -388,18 +714,21 @@ export default function CalendarPage() {
               </div>
             </div>
 
+            {formError && <p className="mt-3 text-xs font-semibold text-red-600">{formError}</p>}
+
             <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-slate-200">
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={closeAddModal}
                 className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 transition-colors"
               >
                 Annulla
               </button>
               <button
                 onClick={submitNewEvent}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors"
+                disabled={submitting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Fissa Appuntamento
+                {submitting ? "Salvataggio…" : "Fissa Appuntamento"}
               </button>
             </div>
           </div>
@@ -434,29 +763,98 @@ function EventChip({ event, onClick, expanded }: { event: CalendarEventData; onC
   );
 }
 
-function SyncRow({ label, status, onClick }: { label: string; status: ConnectionStatus; onClick: () => void }) {
-  const meta =
-    status === "connected"
-      ? { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", text: "Sincronizzato" }
-      : status === "syncing"
-      ? { icon: RefreshCw, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", text: "In corso…" }
-      : { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non connesso" };
+function EventDetail({ event, deleting, onDelete }: { event: CalendarEventData; deleting: boolean; onDelete: () => void }) {
+  const SourceIcon = SOURCE_META[event.source].icon;
+  const isSynced = Boolean(event.externalId);
+  const timeLabel = event.endTime ? `${event.time}–${event.endTime}` : event.time;
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <p className="text-sm font-semibold text-slate-900">{event.title}</p>
+        {event.isAiGenerated && (
+          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+            <Bot size={8} /> AI Scheduled
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+        <SourceIcon size={11} /> {formatLongDate(event.date)} · {timeLabel} · {event.source}
+      </p>
+      <p className="text-xs text-slate-600">{event.description}</p>
+      {isSynced && (
+        <button
+          onClick={onDelete}
+          disabled={deleting}
+          className="mt-2.5 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-60"
+        >
+          <Trash2 size={11} /> {deleting ? "Eliminazione…" : "Elimina dal calendario"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SyncRow({
+  label,
+  provider,
+  loadingStatus,
+  busy,
+  onClick,
+}: {
+  label: string;
+  provider: ProviderStatus | undefined;
+  loadingStatus: boolean;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  const rowStatus: ConnectionStatus = busy ? "syncing" : provider?.connected ? "connected" : "disconnected";
+  const notConfigured = !loadingStatus && provider !== undefined && !provider.configured;
+  const disabled = loadingStatus || notConfigured || busy;
+
+  const meta = loadingStatus
+    ? { icon: RefreshCw, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Verifica…" }
+    : notConfigured
+    ? { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non configurato" }
+    : rowStatus === "connected"
+    ? { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", text: "Sincronizzato" }
+    : rowStatus === "syncing"
+    ? { icon: RefreshCw, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", text: "In corso…" }
+    : { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non connesso" };
   const Icon = meta.icon;
 
+  const lastSync = provider?.lastSync
+    ? new Date(provider.lastSync).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : null;
 
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-colors ${meta.bg} hover:brightness-95`}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <Calendar size={13} className="text-slate-500 flex-shrink-0" />
-        <span className="text-xs font-semibold text-slate-800 truncate">{label}</span>
-      </div>
-      <span className={`flex items-center gap-1 text-[10px] font-bold flex-shrink-0 ${meta.color}`}>
-        <Icon size={11} className={status === "syncing" ? "animate-spin" : ""} />
-        {meta.text}
-      </span>
-    </button>
+    <div className="space-y-1">
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        title={notConfigured ? "Credenziali mancanti: vedi .env.example" : undefined}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-colors ${meta.bg}
+          ${disabled ? "cursor-default" : "hover:brightness-95"}`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <Calendar size={13} className="text-slate-500 flex-shrink-0" />
+          <span className="text-xs font-semibold text-slate-800 truncate">{label}</span>
+        </div>
+        <span className={`flex items-center gap-1 text-[10px] font-bold flex-shrink-0 ${meta.color}`}>
+          <Icon size={11} className={rowStatus === "syncing" ? "animate-spin" : ""} />
+          {meta.text}
+        </span>
+      </button>
+      {notConfigured && (
+        <p className="text-[10px] text-slate-400 px-1">Configura le variabili in .env.example</p>
+      )}
+      {rowStatus === "connected" && (provider?.account || lastSync) && (
+        <p className="text-[10px] text-slate-500 px-1 truncate">
+          {provider?.account}
+          {provider?.account && lastSync && " · "}
+          {lastSync && `ultimo sync ${lastSync}`}
+        </p>
+      )}
+      {provider?.error && <p className="text-[10px] text-red-600 px-1">{provider.error}</p>}
+    </div>
   );
 }

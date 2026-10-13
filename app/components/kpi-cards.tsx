@@ -30,7 +30,7 @@ export default function KpiCards({ data }: KpiCardsProps) {
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center [background-color:var(--kpi-accent-soft)]"
               style={{ 
-                ["--kpi-accent-soft" as any]: `${accent}18`
+                ["--kpi-accent-soft" as string]: `${accent}18`
               }}
             >
               <Icon size={17} style={{ color: accent }} />

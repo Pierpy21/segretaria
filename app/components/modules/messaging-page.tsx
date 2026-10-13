@@ -98,7 +98,7 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
               >
                 <div
                   className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
-                  style={{ ["--avatar-color" as any]: chat.color }}
+                  style={{ ["--avatar-color" as string]: chat.color }}
                 >
                   {chat.initials}
                 </div>
@@ -148,7 +148,7 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
 
               <div
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
-                style={{ ["--avatar-color" as any]: selectedChat.color }}
+                style={{ ["--avatar-color" as string]: selectedChat.color }}
               >
                 {selectedChat.initials}
               </div>
