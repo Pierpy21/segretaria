@@ -12,12 +12,16 @@ function isPublicPath(pathname: string): boolean {
 
 /**
  * Refresh della sessione Supabase (pattern updateSession di @supabase/ssr)
- * e guardia di accesso alle pagine. Le route /api/* non vengono reindirizzate:
- * rispondono da sole con 401 UNAUTHORIZED (contratto app/types/api.ts).
+ * e guardia di accesso alle sole pagine. Le route /api/* non fanno alcuna
+ * chiamata auth qui: verificano già con getUser() (lib/db.ts) e rispondono
+ * 401 UNAUTHORIZED (contratto app/types/api.ts).
+ * Per le pagine la decisione usa getUser() (chiamata GoTrue, che rinfresca anche i cookie).
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isApi = pathname.startsWith("/api/");
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next({ request });
+  }
   const isPublic = isPublicPath(pathname);
 
   let env: ReturnType<typeof getSupabaseEnv> | null = null;
@@ -26,10 +30,9 @@ export async function proxy(request: NextRequest) {
   } catch (err) {
     console.error("[proxy] Supabase non configurato:", err instanceof Error ? err.message : err);
   }
-  // Senza configurazione: le API rispondono da sole (JSON via handleApiError),
-  // le pagine protette vanno al login. Mai 500 non gestito.
+  // Senza configurazione: le pagine protette vanno al login. Mai 500 non gestito.
   if (!env) {
-    return isApi || isPublic ? NextResponse.next({ request }) : NextResponse.redirect(new URL("/login", request.url));
+    return isPublic ? NextResponse.next({ request }) : NextResponse.redirect(new URL("/login", request.url));
   }
 
   let response = NextResponse.next({ request });
@@ -47,16 +50,16 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // getClaims() valida la firma del JWT e aggiorna la sessione se necessario.
+  // getUser() interroga Supabase Auth (revoca immediata) e rinfresca i cookie di sessione.
   let isAuthenticated = false;
   try {
-    const { data } = await supabase.auth.getClaims();
-    isAuthenticated = !!data?.claims;
+    const { data, error } = await supabase.auth.getUser();
+    isAuthenticated = !error && !!data?.user;
   } catch (err) {
     console.error("[proxy] verifica sessione fallita:", err instanceof Error ? err.message : err);
   }
 
-  if (isAuthenticated || isPublic || isApi) {
+  if (isAuthenticated || isPublic) {
     return response;
   }
 

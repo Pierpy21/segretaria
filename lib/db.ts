@@ -41,22 +41,22 @@ export interface CompanyTxContext {
 }
 
 /**
- * Utente verificato server-side. Deduplicato per richiesta via cache().
- * getClaims() verifica la firma del JWT in locale (JWKS in cache in auth-js):
- * nessuna chiamata di rete nel percorso normale. Per chiavi simmetriche (HS256)
- * auth-js ricade su getUser() (rete).
- * getSession() legge il cookie senza validarlo: MAI usarlo qui.
+ * Utente verificato server-side. Deduplicato per richiesta via cache():
+ * withCompany/getMe/requireCompany usati insieme producono una sola chiamata GoTrue.
+ * supabase.auth.getUser() interroga sempre Supabase Auth (rete): logout e revoca
+ * della sessione hanno effetto immediato. Nessuna verifica locale del JWT
+ * (getClaims) né lettura del cookie (getSession): MAI usarli per autorizzazione.
  */
 const getVerifiedUser = cache(async (): Promise<AuthUser> => {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (error || !claims || claims.role !== "authenticated" || !claims.sub) {
+  const { data, error } = await supabase.auth.getUser();
+  const user = data?.user;
+  if (error || !user || user.role !== "authenticated" || !user.id) {
     throw new UnauthorizedError();
   }
   return {
-    id: claims.sub,
-    email: typeof claims.email === "string" ? claims.email : null,
+    id: user.id,
+    email: typeof user.email === "string" ? user.email : null,
   };
 });
 
