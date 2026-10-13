@@ -1,20 +1,22 @@
-import type { CalendarEvent, WeekDay, ReminderItem } from "@/app/types/calendar";
+import type { WeekDay, ReminderItem } from "@/app/types/calendar";
 import type { ReminderPriority } from "@/app/types/calendar";
 
 interface CalendarWidgetProps {
   weekDays: WeekDay[];
+  /** Es. "12 ott – 18 ott 2026" */
+  weekLabel: string;
   reminders: ReminderItem[];
   priorityColor: Record<ReminderPriority, string>;
 }
 
-export default function CalendarWidget({ weekDays, reminders, priorityColor }: CalendarWidgetProps) {
+export default function CalendarWidget({ weekDays, weekLabel, reminders, priorityColor }: CalendarWidgetProps) {
   return (
     <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Agenda & Poltrone</h2>
-          <p className="text-xs text-slate-500">Settimana 29 Giu – 3 Lug 2026</p>
+          <p className="text-xs text-slate-500">Settimana {weekLabel}</p>
         </div>
         <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
           Vista completa →

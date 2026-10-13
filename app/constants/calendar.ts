@@ -1,6 +1,8 @@
 import { Calendar, Cloud, Clock, Bot } from "lucide-react";
 import type { EventSource, ReminderPriority } from "@/app/types/calendar";
 
+export const DAYS_OF_WEEK = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+
 export const PRIORITY_COLOR: Record<ReminderPriority, string> = {
   high: "#ef4444",
   medium: "#f59e0b",

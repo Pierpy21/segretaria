@@ -3,7 +3,7 @@ export type ColumnId = "todo" | "in-progress" | "done";
 export type FilterSource = "all" | "ai" | "human";
 
 export interface Task {
-  id: number;
+  id: string;
   title: string;
   priority: TaskPriority;
   ai: boolean;

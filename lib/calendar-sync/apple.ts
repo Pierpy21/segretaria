@@ -1,9 +1,12 @@
 // Server-only. Integrazione iCloud Calendar via CalDAV (Basic auth con password specifica per app).
+// Credenziali passate da connect() e salvate cifrate in calendar_connections (nessuna env).
+import "server-only";
 import { randomUUID } from "node:crypto";
+import type { AppleConnectInput } from "@/app/types/api";
 import type { CreateEventInput, SyncedEvent } from "@/app/types/calendar-sync";
 import { CalendarSyncError } from "./errors";
 import { buildIcsEvent, parseIcsEvents } from "./ics";
-import { readStore, updateStore } from "./store";
+import { deleteConnection, loadConnection, saveConnection } from "./connections";
 import { formatOffsetIso, getCalendarTimeZone, normalizeLocalDateTime, parseToUtcMs, toCalDavUtc } from "./time";
 
 const CALDAV_ROOT = "https://caldav.icloud.com/";
@@ -19,6 +22,12 @@ const PROPFIND_HOME_SET = `<?xml version="1.0" encoding="UTF-8"?>
 const PROPFIND_CALENDARS = `<?xml version="1.0" encoding="UTF-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:displayname/><d:resourcetype/><c:supported-calendar-component-set/></d:prop></d:propfind>`;
 
+/** Credenziali Apple cifrate in calendar_connections.credentials_encrypted */
+export interface AppleCredentials {
+  appleId: string;
+  appPassword: string;
+}
+
 interface CalendarInfo {
   url: string;
   name: string;
@@ -29,25 +38,8 @@ interface DavResponse {
   text: string;
 }
 
-function env(name: string): string | undefined {
-  return process.env[name]?.trim() || undefined;
-}
-
-export function isAppleConfigured(): boolean {
-  return !!(env("APPLE_ID") && env("APPLE_APP_PASSWORD"));
-}
-
-export function getAppleId(): string | undefined {
-  return env("APPLE_ID");
-}
-
-function credentials(): string {
-  const id = env("APPLE_ID");
-  const password = env("APPLE_APP_PASSWORD");
-  if (!id || !password) {
-    throw new CalendarSyncError("Apple Calendar non configurato: imposta APPLE_ID e APPLE_APP_PASSWORD", 400);
-  }
-  return `Basic ${Buffer.from(`${id}:${password}`, "utf8").toString("base64")}`;
+function credentialsHeader(creds: AppleCredentials): string {
+  return `Basic ${Buffer.from(`${creds.appleId}:${creds.appPassword}`, "utf8").toString("base64")}`;
 }
 
 /** Le credenziali non devono mai partire verso host diversi da iCloud. */
@@ -65,18 +57,22 @@ function assertIcloudUrl(url: string): void {
 }
 
 async function davRequest(
+  creds: AppleCredentials,
   url: string,
   method: string,
   body?: string,
   headers: Record<string, string> = {},
 ): Promise<DavResponse> {
   assertIcloudUrl(url);
-  const auth = credentials();
   let res: Response;
   try {
     res = await fetch(url, {
       method,
-      headers: { Authorization: auth, "Content-Type": "application/xml; charset=utf-8", ...headers },
+      headers: {
+        Authorization: credentialsHeader(creds),
+        "Content-Type": "application/xml; charset=utf-8",
+        ...headers,
+      },
       body,
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -170,48 +166,69 @@ function parseCalendars(xml: string, baseUrl: string): CalendarInfo[] {
   return out;
 }
 
-// ---------- API pubblica ----------
+// ---------- Scoperta calendario ----------
 
-async function requireCalendarUrl(): Promise<string> {
-  const apple = (await readStore()).apple;
-  if (!apple?.calendarUrl) throw new CalendarSyncError("Apple Calendar non collegato", 409);
-  return apple.calendarUrl;
-}
-
-/** Scopre principal, home set e calendario di eventi, poi lo salva nello store. */
-export async function discover(): Promise<void> {
-  const root = await davRequest(CALDAV_ROOT, "PROPFIND", PROPFIND_PRINCIPAL, { Depth: "0" });
+/** Scopre principal, home set e calendario di eventi con le credenziali fornite. */
+async function discoverCalendar(creds: AppleCredentials, calendarName?: string): Promise<CalendarInfo> {
+  const root = await davRequest(creds, CALDAV_ROOT, "PROPFIND", PROPFIND_PRINCIPAL, { Depth: "0" });
   assertStatus(root, "ricerca account", [200, 207]);
   const principalHref = propertyHref(root.text, "current-user-principal");
   if (!principalHref) throw new CalendarSyncError("iCloud Calendar: principal CalDAV non trovato", 502);
   const principalUrl = new URL(principalHref, CALDAV_ROOT).href;
 
-  const principal = await davRequest(principalUrl, "PROPFIND", PROPFIND_HOME_SET, { Depth: "0" });
+  const principal = await davRequest(creds, principalUrl, "PROPFIND", PROPFIND_HOME_SET, { Depth: "0" });
   assertStatus(principal, "ricerca calendar-home-set", [200, 207]);
   const homeHref = propertyHref(principal.text, "calendar-home-set");
   if (!homeHref) throw new CalendarSyncError("iCloud Calendar: calendar-home-set non trovato", 502);
   const homeUrl = new URL(homeHref, principalUrl).href;
 
-  const listing = await davRequest(homeUrl, "PROPFIND", PROPFIND_CALENDARS, { Depth: "1" });
+  const listing = await davRequest(creds, homeUrl, "PROPFIND", PROPFIND_CALENDARS, { Depth: "1" });
   assertStatus(listing, "elenco calendari", [200, 207]);
   const calendars = parseCalendars(listing.text, homeUrl);
   if (calendars.length === 0) {
     throw new CalendarSyncError("Nessun calendario di eventi trovato su iCloud", 404);
   }
 
-  const wanted = env("APPLE_CALENDAR_NAME");
+  const wanted = calendarName?.trim() || undefined;
   const chosen = wanted ? calendars.find((c) => c.name === wanted) : calendars[0];
   if (!chosen) throw new CalendarSyncError(`Calendario iCloud "${wanted}" non trovato`, 404);
+  return chosen;
+}
 
-  await updateStore((s) => ({
-    ...s,
-    apple: { calendarUrl: chosen.url, calendarName: chosen.name },
-  }));
+// ---------- API pubblica ----------
+
+interface AppleSession {
+  creds: AppleCredentials;
+  calendarUrl: string;
+}
+
+async function appleSession(companyId: string): Promise<AppleSession> {
+  const conn = await loadConnection<AppleCredentials>(companyId, "apple");
+  if (!conn?.calendarId) throw new CalendarSyncError("Apple Calendar non collegato", 409);
+  return { creds: conn.credentials, calendarUrl: conn.calendarId };
+}
+
+/** Verifica le credenziali, sceglie il calendario e salva la connessione cifrata. */
+export async function connect(companyId: string, input: AppleConnectInput): Promise<void> {
+  const appleId = input.appleId.trim();
+  const appPassword = input.appPassword.trim();
+  if (!appleId || !appPassword) {
+    throw new CalendarSyncError("Apple ID e password specifica per app sono obbligatori", 400);
+  }
+  const creds: AppleCredentials = { appleId, appPassword };
+  const calendar = await discoverCalendar(creds, input.calendarName);
+
+  await saveConnection(companyId, "apple", {
+    account: appleId,
+    calendarId: calendar.url,
+    calendarName: calendar.name,
+    credentials: creds,
+  });
 }
 
 /** Elenca gli eventi nell'intervallo tramite REPORT calendar-query con expand. */
-export async function listEvents(fromISO: string, toISO: string): Promise<SyncedEvent[]> {
-  const calendarUrl = await requireCalendarUrl();
+export async function listEvents(companyId: string, fromISO: string, toISO: string): Promise<SyncedEvent[]> {
+  const { creds, calendarUrl } = await appleSession(companyId);
   const tz = getCalendarTimeZone();
   const start = toCalDavUtc(Date.parse(fromISO));
   const end = toCalDavUtc(Date.parse(toISO));
@@ -222,7 +239,7 @@ export async function listEvents(fromISO: string, toISO: string): Promise<Synced
 <c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${start}" end="${end}"/></c:comp-filter></c:comp-filter></c:filter>
 </c:calendar-query>`;
 
-  const res = await davRequest(calendarUrl, "REPORT", body, { Depth: "1" });
+  const res = await davRequest(creds, calendarUrl, "REPORT", body, { Depth: "1" });
   assertStatus(res, "lettura eventi", [200, 207]);
 
   const events: SyncedEvent[] = [];
@@ -248,8 +265,8 @@ export async function listEvents(fromISO: string, toISO: string): Promise<Synced
 }
 
 /** Crea un evento (PUT di un .ics nuovo, If-None-Match: *). */
-export async function createEvent(input: CreateEventInput): Promise<SyncedEvent> {
-  const calendarUrl = await requireCalendarUrl();
+export async function createEvent(companyId: string, input: CreateEventInput): Promise<SyncedEvent> {
+  const { creds, calendarUrl } = await appleSession(companyId);
   const tz = getCalendarTimeZone();
   const start = normalizeLocalDateTime(input.start, tz);
   const end = normalizeLocalDateTime(input.end, tz);
@@ -272,7 +289,7 @@ export async function createEvent(input: CreateEventInput): Promise<SyncedEvent>
     tz,
   });
 
-  const res = await davRequest(url, "PUT", ics, {
+  const res = await davRequest(creds, url, "PUT", ics, {
     "Content-Type": "text/calendar; charset=utf-8",
     "If-None-Match": "*",
   });
@@ -290,21 +307,18 @@ export async function createEvent(input: CreateEventInput): Promise<SyncedEvent>
 }
 
 /** Elimina la risorsa CalDAV. Accetta solo href dentro il calendario collegato. */
-export async function deleteEvent(externalId: string): Promise<void> {
-  const calendarUrl = await requireCalendarUrl();
+export async function deleteEvent(companyId: string, externalId: string): Promise<void> {
+  const { creds, calendarUrl } = await appleSession(companyId);
   const href = externalId.split("#")[0];
   if (!href.startsWith(calendarUrl) || href.length <= calendarUrl.length) {
     throw new CalendarSyncError("Evento non appartenente al calendario iCloud collegato", 400);
   }
-  const res = await davRequest(href, "DELETE");
+  const res = await davRequest(creds, href, "DELETE");
   if ((res.status >= 200 && res.status < 300) || res.status === 404 || res.status === 410) return;
   assertStatus(res, "eliminazione evento", []);
 }
 
-/** Rimuove il collegamento Apple dallo store (le password restano nelle env). */
-export async function disconnect(): Promise<void> {
-  await updateStore((s) => {
-    const { apple: _removed, ...rest } = s;
-    return rest;
-  });
+/** Rimuove la connessione Apple (le credenziali sono cancellate dal DB). */
+export async function disconnect(companyId: string): Promise<void> {
+  await deleteConnection(companyId, "apple");
 }

@@ -1,23 +1,23 @@
+// Drizzle Kit è usato SOLO per tipi/query (schema in drizzle/) e per `db:studio`.
+// Lo schema reale del database è gestito esclusivamente da supabase/migrations/*.sql:
+// NON usare drizzle-kit generate/push/migrate (nessuno script per questi comandi).
+// `pnpm db:check` valida solo questa configurazione.
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  // Schema and relations files
+  // Definizioni TypeScript allineate alle migration Supabase
   schema: ["./drizzle/schema.ts", "./drizzle/relations.ts"],
 
-  // Output directory for generated migrations (if using Drizzle Kit migrations)
+  // Non usata: le migration non sono generate da drizzle-kit
   out: "./drizzle/migrations",
 
-  // PostgreSQL dialect
   dialect: "postgresql",
 
-  // Database connection — uses Supabase local Docker instance by default
+  // Usata solo da drizzle-kit studio/check (pooler Supabase, porta 6543)
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
 
-  // Verbose logging during migrations
   verbose: true,
-
-  // Require confirmation before destructive operations
   strict: true,
 });

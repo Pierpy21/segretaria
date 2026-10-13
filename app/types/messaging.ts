@@ -1,5 +1,5 @@
 export interface ChatListItem {
-  id: number;
+  id: string;
   name: string;
   snippet: string;
   time: string;
@@ -12,7 +12,7 @@ export interface ChatListItem {
 export type MessageFrom = "contact" | "user" | "ai-draft";
 
 export interface Message {
-  id: number;
+  id: string;
   from: MessageFrom;
   text: string;
   time: string;

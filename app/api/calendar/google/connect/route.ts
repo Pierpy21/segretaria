@@ -1,37 +1,50 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { apiOk, apiFail, toApiFailure } from "@/lib/calendar-sync/http";
-import { buildAuthUrl, disconnect, isGoogleConfigured } from "@/lib/calendar-sync/google";
+import { apiOk, handleApiError } from "@/lib/api";
+import { disconnectProvider, googleAuthUrl } from "@/lib/calendar-sync";
+import { NoCompanyError, UnauthorizedError, requireCompany } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "g_oauth_state";
+const STATE_COOKIE_PATH = "/api/calendar/google";
+const STATE_TTL_SECONDS = 600;
 
-export async function GET() {
+/** Navigazione OAuth: nessun JSON, solo redirect. */
+export async function GET(request: Request) {
   try {
-    if (!isGoogleConfigured()) {
-      return apiFail("Google Calendar non configurato: imposta GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET", 400);
-    }
+    await requireCompany();
+  } catch (err) {
+    if (err instanceof UnauthorizedError) return NextResponse.redirect(new URL("/login", request.url), 302);
+    if (err instanceof NoCompanyError) return NextResponse.redirect(new URL("/onboarding", request.url), 302);
+    console.error("[calendar-sync] google connect", err);
+    return NextResponse.redirect(new URL("/?module=calendar&sync=google-error", request.url), 302);
+  }
+
+  try {
     const state = randomBytes(32).toString("base64url");
-    const response = NextResponse.redirect(buildAuthUrl(state), 302);
+    const response = NextResponse.redirect(googleAuthUrl(state), 302);
     response.cookies.set(STATE_COOKIE, state, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      path: "/api/calendar/google",
-      maxAge: 600,
+      path: STATE_COOKIE_PATH,
+      maxAge: STATE_TTL_SECONDS,
     });
     return response;
   } catch (err) {
-    return toApiFailure(err);
+    // Es. credenziali Google non configurate: torna alla UI con l'esito, non con JSON.
+    console.error("[calendar-sync] google connect", err);
+    return NextResponse.redirect(new URL("/?module=calendar&sync=google-error", request.url), 302);
   }
 }
 
 export async function DELETE() {
   try {
-    await disconnect();
+    const { companyId } = await requireCompany();
+    await disconnectProvider(companyId, "google");
     return apiOk(null);
   } catch (err) {
-    return toApiFailure(err);
+    return handleApiError(err);
   }
 }

@@ -13,7 +13,7 @@ interface MaintenanceBoardProps {
   priorityColor: Record<TaskPriority, string>;
 }
 
-export default function MaintenanceBoard({ boardData, priorityColor }: MaintenanceBoardProps) {
+export default function MaintenanceBoard({ boardData }: MaintenanceBoardProps) {
   return (
     <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
       {/* Header */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, MessageSquare } from "lucide-react";
+import { Bot } from "lucide-react";
 import type { ChatListItem } from "@/app/types/messaging";
 
 interface MessagingHubProps {
@@ -44,7 +44,7 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
             {tab}
             {tab === "Non lette" && chatTab !== "Non lette" && (
               <span className="ml-1.5 inline-block w-4 h-4 rounded-full text-white text-[9px] font-bold leading-4 text-center bg-blue-500">
-                4
+                {chats.filter(c => c.unread > 0).length}
               </span>
             )}
           </button>

@@ -1,52 +1,107 @@
-import { useState } from "react";
-import { Bot, Search, Send, Check, X, Sparkles, ArrowLeft } from "lucide-react";
-import type { ChatListItem, Message } from "@/app/types/messaging";
+"use client";
 
-interface MessagingPageProps {
-  chats: ChatListItem[];
-  conversations: Record<number, Message[]>;
+import { useState, type FormEvent } from "react";
+import { Bot, Search, Send, Check, X, Sparkles, ArrowLeft, LoaderCircle } from "lucide-react";
+import { apiFetch } from "@/app/lib/api-client";
+import { useApiData } from "@/app/hooks/use-api-data";
+import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
+import type { ChatListItem, Message } from "@/app/types/messaging";
+import type { CreateMessageInput } from "@/app/types/api";
+
+type ChatTab = "Tutte" | "Non lette" | "AI Attiva";
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Operazione non riuscita. Riprova.";
 }
 
-export default function MessagingPage({ chats, conversations }: MessagingPageProps) {
-  const [tab, setTab] = useState<"Tutte" | "Non lette" | "AI Attiva">("Tutte");
-  const [selectedId, setSelectedId] = useState<number | null>(chats[0]?.id ?? null);
-  const [threads, setThreads] = useState(conversations);
-  const [draftText, setDraftText] = useState<string | null>(null);
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+// ─── Component ──────────────────────────────────────────────────────────────
 
-  const filteredChats =
-    tab === "Non lette" ? chats.filter(c => c.unread > 0)
-    : tab === "AI Attiva" ? chats.filter(c => c.ai)
-    : chats;
+export default function MessagingPage() {
+  const chatsHook = useApiData<ChatListItem[]>("/api/conversations");
+  const chats = chatsHook.data ?? [];
+  const { mutate: mutateChats } = chatsHook;
+
+  const [tab, setTab] = useState<ChatTab>("Tutte");
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [draftText, setDraftText] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const messagesHook = useApiData<Message[]>(
+    selectedId ? `/api/conversations/${encodeURIComponent(selectedId)}/messages` : null
+  );
+  const messages = messagesHook.data ?? [];
+  const { mutate: mutateMessages } = messagesHook;
 
   const selectedChat = chats.find(c => c.id === selectedId) ?? null;
-  const messages = selectedId != null ? threads[selectedId] ?? [] : [];
   const pendingDraft = messages.find(m => m.from === "ai-draft") ?? null;
 
-  function updateThread(chatId: number, next: Message[]) {
-    setThreads(prev => ({ ...prev, [chatId]: next }));
+  const query = search.trim().toLowerCase();
+  const filteredChats = chats.filter(c => {
+    const byTab = tab === "Non lette" ? c.unread > 0 : tab === "AI Attiva" ? c.ai : true;
+    const bySearch = !query || c.name.toLowerCase().includes(query);
+    return byTab && bySearch;
+  });
+
+  function selectChat(chat: ChatListItem) {
+    setSelectedId(chat.id);
+    setDraftText(null);
+    setActionError(null);
+    setMobileChatOpen(true);
+    if (chat.unread > 0) {
+      mutateChats(list => (list ?? []).map(c => (c.id === chat.id ? { ...c, unread: 0 } : c)));
+      // Non bloccante: il contatore si riallinea al prossimo caricamento
+      apiFetch<null>(`/api/conversations/${encodeURIComponent(chat.id)}/read`, { method: "POST" }).catch(() => {
+        /* ignorato */
+      });
+    }
+  }
+
+  async function sendMessage(text: string, draftId?: string) {
+    if (!selectedId) return;
+    const body: CreateMessageInput = { from: "user", text };
+    setSending(true);
+    setActionError(null);
+    try {
+      const created = await apiFetch<Message>(`/api/conversations/${encodeURIComponent(selectedId)}/messages`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      mutateMessages(list => [...(list ?? []).filter(m => m.id !== draftId), created]);
+      mutateChats(list =>
+        (list ?? []).map(c => (c.id === selectedId ? { ...c, snippet: created.text, time: created.time } : c))
+      );
+      setDraftText(null);
+      if (!draftId) setReplyText("");
+    } catch (err) {
+      setActionError(errorMessage(err));
+    } finally {
+      setSending(false);
+    }
   }
 
   function approveDraft() {
-    if (selectedId == null || !pendingDraft) return;
-    const text = draftText ?? pendingDraft.text;
-    updateThread(
-      selectedId,
-      messages.map(m => (m.id === pendingDraft.id ? { ...m, from: "user", text } : m))
-    );
-    setDraftText(null);
+    if (!pendingDraft) return;
+    const text = (draftText ?? pendingDraft.text).trim();
+    if (!text) return;
+    void sendMessage(text, pendingDraft.id);
   }
 
+  // Nessun endpoint per scartare la bozza: rimossa solo dalla vista corrente
   function discardDraft() {
-    if (selectedId == null || !pendingDraft) return;
-    updateThread(selectedId, messages.filter(m => m.id !== pendingDraft.id));
+    if (!pendingDraft) return;
+    mutateMessages(list => (list ?? []).filter(m => m.id !== pendingDraft.id));
     setDraftText(null);
   }
 
-  function selectChat(id: number) {
-    setSelectedId(id);
-    setDraftText(null);
-    setMobileChatOpen(true);
+  function handleReplySubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const text = replyText.trim();
+    if (!text || sending) return;
+    void sendMessage(text);
   }
 
   return (
@@ -62,6 +117,8 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
             <Search size={13} className="text-slate-400 flex-shrink-0" />
             <input
               type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
               className="bg-transparent outline-none flex-1 text-xs text-slate-900 placeholder-slate-400"
               placeholder="Cerca paziente…"
             />
@@ -84,49 +141,56 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
           ))}
         </div>
 
-
         <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-          {filteredChats.map(chat => {
-            const active = chat.id === selectedId;
-            const hasDraft = (threads[chat.id] ?? []).some(m => m.from === "ai-draft");
-            return (
-              <button
-                key={chat.id}
-                onClick={() => selectChat(chat.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
-                  ${active ? "bg-blue-50" : "hover:bg-slate-50"}`}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
-                  style={{ ["--avatar-color" as string]: chat.color }}
+          {chatsHook.loading ? (
+            <div className="p-4">
+              <SkeletonRows rows={5} className="h-14" />
+            </div>
+          ) : chatsHook.error ? (
+            <div className="p-4">
+              <ErrorState message="Impossibile caricare le chat." onRetry={chatsHook.reload} />
+            </div>
+          ) : filteredChats.length === 0 ? (
+            <p className="px-4 py-6 text-xs text-center text-slate-400">Nessuna conversazione.</p>
+          ) : (
+            filteredChats.map(chat => {
+              const active = chat.id === selectedId;
+              return (
+                <button
+                  key={chat.id}
+                  onClick={() => selectChat(chat)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
+                    ${active ? "bg-blue-50" : "hover:bg-slate-50"}`}
                 >
-                  {chat.initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-sm font-semibold text-slate-900 truncate">{chat.name}</span>
-                    {chat.ai && (
-                      <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 flex-shrink-0">
-                        <Bot size={8} /> AI
+                  <div
+                    className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white [background-color:var(--avatar-color)]"
+                    style={{ ["--avatar-color" as string]: chat.color }}
+                  >
+                    {chat.initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-sm font-semibold text-slate-900 truncate">{chat.name}</span>
+                      {chat.ai && (
+                        <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 flex-shrink-0">
+                          <Bot size={8} /> AI
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs truncate text-slate-400">{chat.snippet}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <span className="text-[11px] text-slate-400">{chat.time}</span>
+                    {chat.unread > 0 && (
+                      <span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center bg-blue-600">
+                        {chat.unread}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs truncate text-slate-400">{chat.snippet}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className="text-[11px] text-slate-400">{chat.time}</span>
-                  {hasDraft && (
-                    <span className="w-2 h-2 rounded-full bg-amber-400" title="Bozza AI in attesa" />
-                  )}
-                  {chat.unread > 0 && (
-                    <span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center bg-blue-600">
-                      {chat.unread}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -158,27 +222,43 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
               </div>
               {selectedChat.ai && (
                 <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2 sm:px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> 
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="hidden sm:inline">Assistente</span> AI Attivo
                 </span>
               )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-              {messages.filter(m => m.from !== "ai-draft").map(m => (
-                <div key={m.id} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-sm
-                      ${m.from === "user" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800"}`}
-                  >
-                    <p>{m.text}</p>
-                    <p className={`text-[10px] mt-1 ${m.from === "user" ? "text-blue-100" : "text-slate-400"}`}>
-                      {m.time}
-                    </p>
-                  </div>
+              {messagesHook.loading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-12 w-2/3" />
+                  <Skeleton className="h-12 w-1/2 ml-auto" />
+                  <Skeleton className="h-12 w-3/5" />
                 </div>
-              ))}
+              ) : messagesHook.error ? (
+                <ErrorState message="Impossibile caricare i messaggi." onRetry={messagesHook.reload} />
+              ) : (
+                messages.filter(m => m.from !== "ai-draft").map(m => (
+                  <div key={m.id} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-sm
+                        ${m.from === "user" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800"}`}
+                    >
+                      <p>{m.text}</p>
+                      <p className={`text-[10px] mt-1 ${m.from === "user" ? "text-blue-100" : "text-slate-400"}`}>
+                        {m.time}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+
+            {actionError && (
+              <div className="mx-5 mb-2">
+                <ErrorState message={actionError} />
+              </div>
+            )}
 
             {/* AI draft preview — waits for user approval before sending */}
             {pendingDraft && (
@@ -196,31 +276,41 @@ export default function MessagingPage({ chats, conversations }: MessagingPagePro
                 <div className="flex items-center justify-end gap-2 mt-3">
                   <button
                     onClick={discardDraft}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+                    disabled={sending}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
                   >
                     <X size={13} /> Scarta
                   </button>
                   <button
                     onClick={approveDraft}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                    disabled={sending}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-60"
                   >
-                    <Check size={13} /> Approva & Invia
+                    {sending ? <LoaderCircle size={13} className="animate-spin" /> : <Check size={13} />} Approva & Invia
                   </button>
                 </div>
               </div>
             )}
 
             {/* Manual reply */}
-            <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-100 flex-shrink-0">
+            <form onSubmit={handleReplySubmit} className="flex items-center gap-2 px-5 py-3 border-t border-slate-100 flex-shrink-0">
               <input
                 type="text"
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
                 placeholder="Scrivi un messaggio…"
+                aria-label="Scrivi un messaggio"
                 className="flex-1 rounded-xl px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 transition-colors"
               />
-              <button className="p-2.5 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition-colors flex-shrink-0">
-                <Send size={15} />
+              <button
+                type="submit"
+                disabled={sending || !replyText.trim()}
+                aria-label="Invia"
+                className="p-2.5 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition-colors flex-shrink-0 disabled:opacity-50"
+              >
+                {sending ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />}
               </button>
-            </div>
+            </form>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-slate-400">

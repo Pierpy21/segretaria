@@ -69,7 +69,7 @@ export function buildWeek(iso: string, todayISO = toISODate(new Date())): MonthC
   });
 }
 
-/** Intervallo ISO [from, to) da passare all'API per la vista corrente */
+/** Intervallo YYYY-MM-DD [from, to) (to esclusivo) da passare all'API per la vista corrente */
 export function getVisibleRange(view: ViewMode, iso: string): { from: string; to: string } {
   const d = parseISODate(iso);
   let start: Date;
@@ -84,7 +84,7 @@ export function getVisibleRange(view: ViewMode, iso: string): { from: string; to
     start = new Date(d.getFullYear(), d.getMonth(), 1);
     end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   }
-  return { from: start.toISOString(), to: end.toISOString() };
+  return { from: toISODate(start), to: toISODate(end) };
 }
 
 /** "Ottobre 2026" */
@@ -125,14 +125,4 @@ export function addMinutesToTime(time: string, minutes: number): string {
 /** Data + ora → "YYYY-MM-DDTHH:mm:00" (ora locale, senza offset) */
 export function localDateTime(date: string, time: string): string {
   return `${date}T${time}:00`;
-}
-
-/** ID numerico stabile (negativo, quindi distinto dagli ID locali) da una chiave, es. "google:abc" */
-export function stableEventId(key: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return -((h >>> 0) + 1);
 }

@@ -1,116 +1,157 @@
-// Server-only. Orchestrazione dei provider di sincronizzazione calendario.
-import type {
-  CreateEventInput,
-  ProviderStatus,
-  SyncProvider,
-  SyncStatusResponse,
-  SyncedEvent,
-} from "@/app/types/calendar-sync";
+// Server-only. Orchestrazione dei provider di sincronizzazione calendario (per azienda).
+import "server-only";
+import type { AppleConnectInput, CreateCalendarEventInput, SyncResult } from "@/app/types/api";
+import type { CalendarEventData, EventSource } from "@/app/types/calendar";
+import type { CreateEventInput, ProviderStatus, SyncProvider, SyncStatusResponse } from "@/app/types/calendar-sync";
 import * as apple from "./apple";
 import { CalendarSyncError } from "./errors";
+import { findConnectionInfo, listConnectionInfo, markSynced } from "./connections";
 import * as google from "./google";
-import { readStore, updateStore } from "./store";
+import { getCalendarTimeZone } from "./time";
+import {
+  createEvent as createAgendaRow,
+  deleteEvent as deleteAgendaRow,
+  getEventRef,
+  resolveAgendaRange,
+  upsertExternalEvents,
+} from "@/lib/data/calendar";
+import { NotFoundError } from "@/lib/errors";
 
 export { CalendarSyncError } from "./errors";
 
-export async function getStatus(): Promise<SyncStatusResponse> {
-  const store = await readStore();
-  const g = store.google;
-  const a = store.apple;
+const PROVIDER_LABEL: Record<SyncProvider, string> = {
+  google: "Google Calendar",
+  apple: "Apple Calendar",
+};
 
-  const googleStatus: ProviderStatus = {
-    configured: google.isGoogleConfigured(),
-    connected: !!g,
-    account: g?.account,
-    lastSync: g?.lastSync,
+export async function getSyncStatus(companyId: string): Promise<SyncStatusResponse> {
+  const connections = await listConnectionInfo(companyId);
+  const g = connections.find((c) => c.provider === "google");
+  const a = connections.find((c) => c.provider === "apple");
+
+  return {
+    google: {
+      configured: google.isGoogleConfigured(),
+      connected: !!g,
+      account: g?.account ?? undefined,
+      lastSync: g?.lastSyncAt?.toISOString(),
+    },
+    apple: {
+      configured: true,
+      connected: !!a,
+      account: a?.account ?? undefined,
+      calendarName: a?.calendarName ?? undefined,
+      lastSync: a?.lastSyncAt?.toISOString(),
+    },
   };
-  const appleStatus: ProviderStatus = {
-    configured: apple.isAppleConfigured(),
-    connected: !!a?.calendarUrl,
-    account: a?.calendarUrl ? apple.getAppleId() : undefined,
-    calendarName: a?.calendarUrl ? a.calendarName : undefined,
-    lastSync: a?.lastSync,
-  };
-  return { google: googleStatus, apple: appleStatus };
 }
 
-/** Stato dopo il collegamento Apple (discover già salvato nello store). */
-export async function connectApple(): Promise<ProviderStatus> {
-  await apple.discover();
-  return (await getStatus()).apple;
+/** URL di autorizzazione Google; `state` è generato e verificato dalla route. */
+export function googleAuthUrl(state: string): string {
+  return google.buildAuthUrl(state);
 }
 
-export async function disconnectProvider(provider: SyncProvider): Promise<void> {
-  if (provider === "google") await google.disconnect();
-  else await apple.disconnect();
+export async function connectGoogle(companyId: string, code: string): Promise<ProviderStatus> {
+  await google.connectWithCode(companyId, code);
+  return (await getSyncStatus(companyId)).google;
+}
+
+export async function connectApple(companyId: string, input: AppleConnectInput): Promise<ProviderStatus> {
+  await apple.connect(companyId, input);
+  return (await getSyncStatus(companyId)).apple;
+}
+
+export async function disconnectProvider(companyId: string, provider: SyncProvider): Promise<void> {
+  if (provider === "google") await google.disconnect(companyId);
+  else await apple.disconnect(companyId);
+}
+
+function providerOfSource(source: EventSource): SyncProvider | null {
+  if (source === "Google Calendar") return "google";
+  if (source === "Apple Calendar") return "apple";
+  return null;
+}
+
+async function requireConnected(companyId: string, provider: SyncProvider): Promise<void> {
+  const info = await findConnectionInfo(companyId, provider);
+  if (!info) throw new CalendarSyncError(`${PROVIDER_LABEL[provider]} non collegato`, 409);
+}
+
+/**
+ * Crea un evento nell'agenda. Per le sorgenti Google/Apple crea prima l'evento
+ * sul calendario remoto, poi salva la riga collegata (external_provider/external_id).
+ */
+export async function createAgendaEvent(
+  companyId: string,
+  input: CreateCalendarEventInput,
+): Promise<CalendarEventData> {
+  const provider = providerOfSource(input.source);
+  if (!provider) return createAgendaRow(companyId, input);
+
+  // Validazione prima di toccare il provider remoto
+  resolveAgendaRange(input.date, input.startTime, input.endTime, getCalendarTimeZone());
+  await requireConnected(companyId, provider);
+
+  const remoteInput: CreateEventInput = {
+    provider,
+    title: input.title,
+    description: input.description,
+    start: `${input.date}T${input.startTime}:00`,
+    end: `${input.date}T${input.endTime}:00`,
+  };
+  const remote =
+    provider === "google"
+      ? await google.createEvent(companyId, remoteInput)
+      : await apple.createEvent(companyId, remoteInput);
+
+  return createAgendaRow(companyId, input, { provider, externalId: remote.externalId });
+}
+
+/** Elimina l'evento; se è collegato a un provider attivo, elimina anche sul calendario remoto. */
+export async function deleteAgendaEvent(companyId: string, id: string): Promise<void> {
+  const ref = await getEventRef(companyId, id);
+  if (!ref) throw new NotFoundError("Evento non trovato");
+
+  const external = ref.external;
+  if (external && (await findConnectionInfo(companyId, external.provider))) {
+    if (external.provider === "google") await google.deleteEvent(companyId, external.externalId);
+    else await apple.deleteEvent(companyId, external.externalId);
+  }
+
+  const deleted = await deleteAgendaRow(companyId, id);
+  if (!deleted) throw new NotFoundError("Evento non trovato");
 }
 
 function errorToMessage(err: unknown): string {
   if (err instanceof CalendarSyncError) return err.message;
-  console.error("[calendar-sync] provider error", err);
+  console.error("[calendar-sync] errore provider", err);
   return "Errore imprevisto durante la sincronizzazione";
 }
 
-/** Unisce gli eventi di tutti i provider collegati; un errore di un provider non blocca gli altri. */
-export async function listAllEvents(
-  fromMs: number,
-  toMs: number,
-): Promise<{ events: SyncedEvent[]; errors: Partial<Record<SyncProvider, string>> }> {
-  const store = await readStore();
-  const from = new Date(fromMs).toISOString();
-  const to = new Date(toMs).toISOString();
+/**
+ * Importa gli eventi dei provider collegati nell'intervallo [from, to) e
+ * aggiorna lastSync. Un errore di un provider non blocca gli altri e non
+ * elimina i suoi eventi (la rimozione avviene solo con una lista valida).
+ */
+export async function syncCompanyCalendars(companyId: string, from: Date, to: Date): Promise<SyncResult> {
+  const connections = await listConnectionInfo(companyId);
+  const result: SyncResult = { imported: 0, removed: 0, errors: {} };
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
 
-  const tasks: Array<{ provider: SyncProvider; run: Promise<SyncedEvent[]> }> = [];
-  if (store.google) tasks.push({ provider: "google", run: google.listEvents(from, to) });
-  if (store.apple?.calendarUrl) tasks.push({ provider: "apple", run: apple.listEvents(from, to) });
-
-  const settled = await Promise.allSettled(tasks.map((t) => t.run));
-
-  const events: SyncedEvent[] = [];
-  const errors: Partial<Record<SyncProvider, string>> = {};
-  const synced: SyncProvider[] = [];
-
-  settled.forEach((result, i) => {
-    const { provider } = tasks[i];
-    if (result.status === "fulfilled") {
-      events.push(...result.value);
-      synced.push(provider);
-    } else {
-      errors[provider] = errorToMessage(result.reason);
+  for (const { provider } of connections) {
+    try {
+      const events =
+        provider === "google"
+          ? await google.listEvents(companyId, fromIso, toIso)
+          : await apple.listEvents(companyId, fromIso, toIso);
+      const counts = await upsertExternalEvents(companyId, provider, events, from, to);
+      result.imported += counts.imported;
+      result.removed += counts.removed;
+      await markSynced(companyId, provider, new Date());
+    } catch (err) {
+      result.errors[provider] = errorToMessage(err);
     }
-  });
-
-  if (synced.length > 0) {
-    const now = new Date().toISOString();
-    await updateStore((s) => ({
-      ...s,
-      google: s.google && synced.includes("google") ? { ...s.google, lastSync: now } : s.google,
-      apple: s.apple && synced.includes("apple") ? { ...s.apple, lastSync: now } : s.apple,
-    }));
   }
-
-  events.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
-  return { events, errors };
-}
-
-async function assertConnected(provider: SyncProvider): Promise<void> {
-  const store = await readStore();
-  const connected = provider === "google" ? !!store.google : !!store.apple?.calendarUrl;
-  if (!connected) {
-    throw new CalendarSyncError(
-      provider === "google" ? "Google Calendar non collegato" : "Apple Calendar non collegato",
-      409,
-    );
-  }
-}
-
-export async function createEvent(input: CreateEventInput): Promise<SyncedEvent> {
-  await assertConnected(input.provider);
-  return input.provider === "google" ? google.createEvent(input) : apple.createEvent(input);
-}
-
-export async function deleteEvent(provider: SyncProvider, externalId: string): Promise<void> {
-  await assertConnected(provider);
-  if (provider === "google") await google.deleteEvent(externalId);
-  else await apple.deleteEvent(externalId);
+  return result;
 }

@@ -1,7 +1,9 @@
 // Server-only. Integrazione Google Calendar (OAuth 2.0 authorization code + REST v3).
+// Client id/secret restano in env; token per azienda in calendar_connections (cifrati).
+import "server-only";
 import type { CreateEventInput, SyncedEvent } from "@/app/types/calendar-sync";
 import { CalendarSyncError } from "./errors";
-import { readStore, updateStore } from "./store";
+import { deleteConnection, loadConnection, saveConnection, updateCredentials } from "./connections";
 import { getCalendarTimeZone, normalizeLocalDateTime } from "./time";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -14,6 +16,14 @@ const REFRESH_MARGIN_MS = 60_000;
 const TIMEOUT_MS = 15_000;
 const MAX_PAGES = 10;
 const SESSION_EXPIRED = "Sessione Google scaduta, ricollega l'account";
+
+/** Credenziali Google cifrate in calendar_connections.credentials_encrypted */
+export interface GoogleCredentials {
+  accessToken: string;
+  refreshToken: string;
+  /** Epoch ms di scadenza dell'access token */
+  expiresAt: number;
+}
 
 interface TokenResponse {
   access_token?: string;
@@ -54,8 +64,7 @@ function requireConfig(): { clientId: string; clientSecret: string; redirectUri:
   };
 }
 
-function eventsUrl(): string {
-  const calendarId = env("GOOGLE_CALENDAR_ID") ?? "primary";
+function eventsUrl(calendarId: string): string {
   return `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events`;
 }
 
@@ -119,8 +128,8 @@ function emailFromIdToken(idToken: string, clientId: string): string | undefined
   }
 }
 
-/** Scambia il codice OAuth con i token e li salva nello store. */
-export async function exchangeCode(code: string): Promise<void> {
+/** Scambia il codice OAuth con i token e salva la connessione dell'azienda. */
+export async function connectWithCode(companyId: string, code: string): Promise<void> {
   const { clientId, clientSecret, redirectUri } = requireConfig();
   const tok = await postToken({
     code,
@@ -134,8 +143,8 @@ export async function exchangeCode(code: string): Promise<void> {
     throw new CalendarSyncError("Permesso di gestione calendario Google non concesso", 403);
   }
 
-  const current = (await readStore()).google;
-  const refreshToken = tok.refresh_token ?? current?.refreshToken;
+  const current = await loadConnection<GoogleCredentials>(companyId, "google");
+  const refreshToken = tok.refresh_token ?? current?.credentials.refreshToken;
   if (!tok.access_token || !refreshToken) {
     throw new CalendarSyncError(
       "Google non ha restituito un refresh token: revoca l'accesso su myaccount.google.com e riprova",
@@ -144,26 +153,35 @@ export async function exchangeCode(code: string): Promise<void> {
   }
 
   const account = tok.id_token ? emailFromIdToken(tok.id_token, clientId) : undefined;
-  const accessToken = tok.access_token;
-  const expiresAt = Date.now() + (tok.expires_in ?? 3600) * 1000;
+  const credentials: GoogleCredentials = {
+    accessToken: tok.access_token,
+    refreshToken,
+    expiresAt: Date.now() + (tok.expires_in ?? 3600) * 1000,
+  };
 
-  await updateStore((s) => ({
-    ...s,
-    google: { accessToken, refreshToken, expiresAt, account },
-  }));
-}
-
-async function dropGoogleAuth(): Promise<void> {
-  await updateStore((s) => {
-    const { google: _removed, ...rest } = s;
-    return rest;
+  await saveConnection(companyId, "google", {
+    account: account ?? current?.account ?? null,
+    calendarId: env("GOOGLE_CALENDAR_ID") ?? "primary",
+    calendarName: null,
+    credentials,
   });
 }
 
-async function getAccessToken(): Promise<string> {
-  const google = (await readStore()).google;
-  if (!google) throw new CalendarSyncError("Google Calendar non collegato", 409);
-  if (google.expiresAt - REFRESH_MARGIN_MS > Date.now()) return google.accessToken;
+interface GoogleSession {
+  accessToken: string;
+  calendarId: string;
+}
+
+/** Access token valido + calendario della connessione; rinnova il token se scaduto. */
+async function googleSession(companyId: string): Promise<GoogleSession> {
+  const conn = await loadConnection<GoogleCredentials>(companyId, "google");
+  if (!conn) throw new CalendarSyncError("Google Calendar non collegato", 409);
+
+  const calendarId = conn.calendarId ?? "primary";
+  const cred = conn.credentials;
+  if (cred.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
+    return { accessToken: cred.accessToken, calendarId };
+  }
 
   const { clientId, clientSecret } = requireConfig();
   let tok: TokenResponse;
@@ -171,44 +189,39 @@ async function getAccessToken(): Promise<string> {
     tok = await postToken({
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: google.refreshToken,
+      refresh_token: cred.refreshToken,
       grant_type: "refresh_token",
     });
   } catch (err) {
     // Refresh token revocato o scaduto: il collegamento non è più utilizzabile.
-    if (err instanceof CalendarSyncError && err.status === 401) await dropGoogleAuth();
+    if (err instanceof CalendarSyncError && err.status === 401) {
+      await deleteConnection(companyId, "google");
+    }
     throw err;
   }
-  if (!tok.access_token) throw new CalendarSyncError(SESSION_EXPIRED, 401);
+  if (!tok.access_token) {
+    await deleteConnection(companyId, "google");
+    throw new CalendarSyncError(SESSION_EXPIRED, 401);
+  }
 
-  const accessToken = tok.access_token;
-  const expiresAt = Date.now() + (tok.expires_in ?? 3600) * 1000;
-  const rotated = tok.refresh_token;
-  await updateStore((s) =>
-    s.google
-      ? {
-          ...s,
-          google: {
-            ...s.google,
-            accessToken,
-            expiresAt,
-            refreshToken: rotated ?? s.google.refreshToken,
-          },
-        }
-      : s,
-  );
-  return accessToken;
+  const refreshed: GoogleCredentials = {
+    accessToken: tok.access_token,
+    refreshToken: tok.refresh_token ?? cred.refreshToken,
+    expiresAt: Date.now() + (tok.expires_in ?? 3600) * 1000,
+  };
+  await updateCredentials(companyId, "google", refreshed);
+  return { accessToken: refreshed.accessToken, calendarId };
 }
 
 async function googleApi(
+  session: GoogleSession,
   url: string,
   init: { method?: string; body?: unknown } = {},
 ): Promise<Response> {
-  const token = await getAccessToken();
   const res = await fetch(url, {
     method: init.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${session.accessToken}`,
       ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
@@ -241,7 +254,8 @@ function toSyncedEvent(item: GoogleEventItem): SyncedEvent | null {
 }
 
 /** Elenca gli eventi nell'intervallo [fromISO, toISO) (ISO 8601 con offset o Z). */
-export async function listEvents(fromISO: string, toISO: string): Promise<SyncedEvent[]> {
+export async function listEvents(companyId: string, fromISO: string, toISO: string): Promise<SyncedEvent[]> {
+  const session = await googleSession(companyId);
   const events: SyncedEvent[] = [];
   let pageToken: string | undefined;
 
@@ -255,7 +269,7 @@ export async function listEvents(fromISO: string, toISO: string): Promise<Synced
     });
     if (pageToken) params.set("pageToken", pageToken);
 
-    const res = await googleApi(`${eventsUrl()}?${params.toString()}`);
+    const res = await googleApi(session, `${eventsUrl(session.calendarId)}?${params.toString()}`);
     if (!res.ok) throw new CalendarSyncError(await errorMessage(res, "lettura eventi"), 502);
 
     const body = (await res.json()) as { items?: GoogleEventItem[]; nextPageToken?: string };
@@ -269,14 +283,15 @@ export async function listEvents(fromISO: string, toISO: string): Promise<Synced
   return events;
 }
 
-/** Crea un evento nel calendario Google configurato, nel fuso CALENDAR_TIMEZONE. */
-export async function createEvent(input: CreateEventInput): Promise<SyncedEvent> {
+/** Crea un evento nel calendario Google collegato, nel fuso CALENDAR_TIMEZONE. */
+export async function createEvent(companyId: string, input: CreateEventInput): Promise<SyncedEvent> {
   const tz = getCalendarTimeZone();
   const start = normalizeLocalDateTime(input.start, tz);
   const end = normalizeLocalDateTime(input.end, tz);
   if (!start || !end) throw new CalendarSyncError("Data di inizio o fine non valida", 400);
 
-  const res = await googleApi(eventsUrl(), {
+  const session = await googleSession(companyId);
+  const res = await googleApi(session, eventsUrl(session.calendarId), {
     method: "POST",
     body: {
       summary: input.title,
@@ -293,26 +308,29 @@ export async function createEvent(input: CreateEventInput): Promise<SyncedEvent>
 }
 
 /** Elimina un evento (410/404 considerati già eliminati). */
-export async function deleteEvent(id: string): Promise<void> {
-  const res = await googleApi(`${eventsUrl()}/${encodeURIComponent(id)}`, { method: "DELETE" });
+export async function deleteEvent(companyId: string, externalId: string): Promise<void> {
+  const session = await googleSession(companyId);
+  const res = await googleApi(session, `${eventsUrl(session.calendarId)}/${encodeURIComponent(externalId)}`, {
+    method: "DELETE",
+  });
   if (res.ok || res.status === 404 || res.status === 410) return;
   throw new CalendarSyncError(await errorMessage(res, "eliminazione evento"), 502);
 }
 
-/** Revoca il token presso Google (errori ignorati) e rimuove il collegamento dallo store. */
-export async function disconnect(): Promise<void> {
-  const google = (await readStore()).google;
-  if (google?.refreshToken) {
+/** Revoca il token presso Google (errori ignorati) e rimuove la connessione. */
+export async function disconnect(companyId: string): Promise<void> {
+  const conn = await loadConnection<GoogleCredentials>(companyId, "google");
+  if (conn?.credentials.refreshToken) {
     try {
-      await fetch(`${REVOKE_URL}?token=${encodeURIComponent(google.refreshToken)}`, {
+      await fetch(`${REVOKE_URL}?token=${encodeURIComponent(conn.credentials.refreshToken)}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         cache: "no-store",
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
-      // ignorato: il collegamento locale viene comunque rimosso
+      // ignorato: la connessione locale viene comunque rimossa
     }
   }
-  await dropGoogleAuth();
+  await deleteConnection(companyId, "google");
 }

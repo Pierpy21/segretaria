@@ -3,11 +3,13 @@ import {
   companies,
   companyMembers,
   calendarEvents,
+  calendarConnections,
   reminders,
   tasks,
   conversations,
   messages,
   quotes,
+  patients,
 } from "./schema";
 
 // ============================================================================
@@ -22,11 +24,13 @@ import {
 export const companiesRelations = relations(companies, ({ many }) => ({
   members: many(companyMembers),
   calendarEvents: many(calendarEvents),
+  calendarConnections: many(calendarConnections),
   reminders: many(reminders),
   tasks: many(tasks),
   conversations: many(conversations),
   messages: many(messages),
   quotes: many(quotes),
+  patients: many(patients),
 }));
 
 // --------------------------------------------------------------------------
@@ -45,6 +49,16 @@ export const companyMembersRelations = relations(companyMembers, ({ one }) => ({
 export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({
   company: one(companies, {
     fields: [calendarEvents.companyId],
+    references: [companies.id],
+  }),
+}));
+
+// --------------------------------------------------------------------------
+// calendar_connections belongs to company
+// --------------------------------------------------------------------------
+export const calendarConnectionsRelations = relations(calendarConnections, ({ one }) => ({
+  company: one(companies, {
+    fields: [calendarConnections.companyId],
     references: [companies.id],
   }),
 }));
@@ -103,6 +117,16 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export const quotesRelations = relations(quotes, ({ one }) => ({
   company: one(companies, {
     fields: [quotes.companyId],
+    references: [companies.id],
+  }),
+}));
+
+// --------------------------------------------------------------------------
+// patients belongs to company
+// --------------------------------------------------------------------------
+export const patientsRelations = relations(patients, ({ one }) => ({
+  company: one(companies, {
+    fields: [patients.companyId],
     references: [companies.id],
   }),
 }));

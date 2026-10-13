@@ -1,85 +1,113 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, X, Bot, User, Trash2, GripVertical, Filter } from "lucide-react";
-import { INITIAL_COLUMNS, PRIORITY_COLOR } from "@/app/data/maintenance";
-import type { TaskPriority, ColumnId, FilterSource, Task, Column } from "@/app/types/maintenance";
+import { useState, type FormEvent } from "react";
+import { Plus, X, Bot, User, Trash2, GripVertical, Filter, LoaderCircle } from "lucide-react";
+import { BOARD_COLUMNS, PRIORITY_COLOR } from "@/app/constants/maintenance";
+import { apiFetch } from "@/app/lib/api-client";
+import { useApiData } from "@/app/hooks/use-api-data";
+import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
+import type { TaskPriority, ColumnId, FilterSource } from "@/app/types/maintenance";
+import type { BoardTask, CreateTaskInput, UpdateTaskInput } from "@/app/types/api";
 
-let nextTaskId = 8;
+interface NewTaskForm {
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  assignedTo: string;
+}
+
+const EMPTY_FORM: NewTaskForm = { title: "", description: "", priority: "medium", assignedTo: "" };
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Operazione non riuscita. Riprova.";
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function MaintenancePage() {
-  const [columns, setColumns] = useState<Column[]>(INITIAL_COLUMNS);
+  const tasksHook = useApiData<BoardTask[]>("/api/tasks");
+  const tasks = tasksHook.data ?? [];
+
   const [filterSource, setFilterSource] = useState<FilterSource>("all");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<{ task: Task; columnId: ColumnId } | null>(null);
-  const [form, setForm] = useState({ title: "", description: "", priority: "medium" as TaskPriority, isAi: false });
-  const [draggedTask, setDraggedTask] = useState<{ taskId: number; fromColId: ColumnId } | null>(null);
+  const [form, setForm] = useState<NewTaskForm>(EMPTY_FORM);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  function moveTask(taskId: number, fromColId: ColumnId, toColId: ColumnId) {
-    const task = columns.find(c => c.id === fromColId)?.tasks.find(t => t.id === taskId);
-    if (!task) return;
+  const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null;
 
-    setColumns(prev =>
-      prev.map(col => {
-        if (col.id === fromColId) {
-          return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) };
-        }
-        if (col.id === toColId) {
-          return { ...col, tasks: [...col.tasks, task] };
-        }
-        return col;
-      })
-    );
-    setSelectedTask(null);
+  function tasksIn(columnId: ColumnId): BoardTask[] {
+    return tasks.filter(t => t.columnId === columnId).sort((a, b) => a.position - b.position);
   }
 
-  function handleDragStart(taskId: number, colId: ColumnId) {
-    setDraggedTask({ taskId, fromColId: colId });
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  }
-
-  function handleDrop(e: React.DragEvent, toColId: ColumnId) {
-    e.preventDefault();
-    if (draggedTask) {
-      if (draggedTask.fromColId !== toColId) {
-        moveTask(draggedTask.taskId, draggedTask.fromColId, toColId);
-      }
-      setDraggedTask(null);
+  // Sposta in fondo alla colonna di destinazione (update ottimistico, rollback su errore)
+  async function moveTask(task: BoardTask, columnId: ColumnId) {
+    if (task.columnId === columnId) return;
+    const position = tasksIn(columnId).length;
+    setActionError(null);
+    setSelectedTaskId(null);
+    tasksHook.mutate(list => (list ?? []).map(t => (t.id === task.id ? { ...t, columnId, position } : t)));
+    try {
+      const body: UpdateTaskInput = { columnId, position };
+      const updated = await apiFetch<BoardTask>(`/api/tasks/${encodeURIComponent(task.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      tasksHook.mutate(list => (list ?? []).map(t => (t.id === task.id ? updated : t)));
+    } catch (err) {
+      tasksHook.mutate(list =>
+        (list ?? []).map(t => (t.id === task.id ? { ...t, columnId: task.columnId, position: task.position } : t))
+      );
+      setActionError(errorMessage(err));
     }
   }
 
-  function deleteTask(taskId: number, colId: ColumnId) {
-    setColumns(prev =>
-      prev.map(col => (col.id === colId ? { ...col, tasks: col.tasks.filter(t => t.id !== taskId) } : col))
-    );
-    setSelectedTask(null);
+  // Eliminazione ottimistica con ripristino su errore
+  async function deleteTask(task: BoardTask) {
+    setActionError(null);
+    setSelectedTaskId(null);
+    tasksHook.mutate(list => (list ?? []).filter(t => t.id !== task.id));
+    try {
+      await apiFetch<null>(`/api/tasks/${encodeURIComponent(task.id)}`, { method: "DELETE" });
+    } catch (err) {
+      tasksHook.mutate(list => [...(list ?? []), task]);
+      setActionError(errorMessage(err));
+    }
   }
 
-  function submitNewTask() {
-    if (!form.title.trim()) return;
-    const newTask: Task = {
-      id: nextTaskId++,
-      title: form.title.trim(),
-      description: form.description.trim() || "Nessuna descrizione fornita.",
+  async function submitNewTask(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const title = form.title.trim();
+    if (!title) {
+      setFormError("Inserisci il titolo dell'attività.");
+      return;
+    }
+    const body: CreateTaskInput = {
+      title,
+      description: form.description.trim() || undefined,
       priority: form.priority,
-      ai: form.isAi,
-      assignedTo: form.isAi ? "AI Secretary" : "Carlo",
+      columnId: "todo",
+      assignedTo: form.assignedTo.trim() || undefined,
     };
-    setColumns(prev =>
-      prev.map(col => (col.id === "todo" ? { ...col, tasks: [newTask, ...col.tasks] } : col))
-    );
-    setForm({ title: "", description: "", priority: "medium", isAi: false });
-    setShowNewModal(false);
+    setFormError(null);
+    setSubmitting(true);
+    try {
+      const created = await apiFetch<BoardTask>("/api/tasks", { method: "POST", body: JSON.stringify(body) });
+      tasksHook.mutate(list => [...(list ?? []), created]);
+      setForm(EMPTY_FORM);
+      setShowNewModal(false);
+    } catch (err) {
+      setFormError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const allTasksCount = columns.reduce((sum, col) => sum + col.tasks.length, 0);
-  const aiTasksCount = columns.reduce((sum, col) => sum + col.tasks.filter(t => t.ai).length, 0);
+  const allTasksCount = tasks.length;
+  const aiTasksCount = tasks.filter(t => t.ai).length;
   const humanTasksCount = allTasksCount - aiTasksCount;
 
   return (
@@ -116,6 +144,8 @@ export default function MaintenancePage() {
         </div>
       </div>
 
+      {actionError && <ErrorState message={actionError} />}
+
       {/* Filter bar */}
       <div className="flex gap-2">
         {(["all", "ai", "human"] as const).map(f => (
@@ -134,83 +164,102 @@ export default function MaintenancePage() {
         ))}
       </div>
 
+      {tasksHook.error && <ErrorState message="Impossibile caricare le attività." onRetry={tasksHook.reload} />}
 
       {/* Kanban board */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {columns.map(col => {
-          const filtered =
-            filterSource === "all" ? col.tasks : filterSource === "ai" ? col.tasks.filter(t => t.ai) : col.tasks.filter(t => !t.ai);
-          return (
-            <div
-              key={col.id}
-              onDragOver={handleDragOver}
-              onDrop={e => handleDrop(e, col.id)}
-              className={`rounded-2xl border-2 flex flex-col overflow-hidden transition-colors ${
-                draggedTask ? "border-blue-300" : "border-slate-200"
-              }`}
-              style={{ backgroundColor: col.bg }}
-            >
-              {/* Column header */}
-              <div className="px-4 py-3 border-b border-slate-200 bg-white">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col.accent }} />
-                  <span className="text-xs font-bold text-slate-700">{col.name}</span>
-                  <span
-                    className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${col.accent}20`, color: col.accent }}
-                  >
-                    {filtered.length}
-                  </span>
+      {tasksHook.loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {BOARD_COLUMNS.map(col => (
+            <Skeleton key={col.id} className="h-64" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {BOARD_COLUMNS.map(meta => {
+            const all = tasksIn(meta.id);
+            const filtered =
+              filterSource === "all" ? all : filterSource === "ai" ? all.filter(t => t.ai) : all.filter(t => !t.ai);
+            return (
+              <div
+                key={meta.id}
+                onDragOver={e => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={e => {
+                  e.preventDefault();
+                  const task = tasks.find(t => t.id === draggedTaskId);
+                  setDraggedTaskId(null);
+                  if (task) void moveTask(task, meta.id);
+                }}
+                className={`rounded-2xl border-2 flex flex-col overflow-hidden transition-colors ${
+                  draggedTaskId ? "border-blue-300" : "border-slate-200"
+                }`}
+                style={{ backgroundColor: meta.bg }}
+              >
+                {/* Column header */}
+                <div className="px-4 py-3 border-b border-slate-200 bg-white">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.accent }} />
+                    <span className="text-xs font-bold text-slate-700">{meta.name}</span>
+                    <span
+                      className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: `${meta.accent}20`, color: meta.accent }}
+                    >
+                      {filtered.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tasks */}
+                <div className="flex-1 p-3 space-y-2 overflow-y-auto max-h-[520px]">
+                  {filtered.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 italic py-2">Nessun task.</p>
+                  ) : (
+                    filtered.map(task => (
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={() => setDraggedTaskId(task.id)}
+                        onDragEnd={() => setDraggedTaskId(null)}
+                        onClick={() => setSelectedTaskId(task.id)}
+                        className={`w-full bg-white rounded-xl p-3 border text-left cursor-grab active:cursor-grabbing transition-all
+                          ${draggedTaskId === task.id ? "opacity-50 border-blue-400" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"}`}
+                      >
+                        <div className="flex items-start gap-2 mb-2">
+                          <GripVertical size={12} className="mt-0.5 text-slate-400 flex-shrink-0" />
+                          <p className="text-[11px] font-medium text-slate-900 flex-1 leading-tight">{task.title}</p>
+                        </div>
+                        <div className="flex items-center justify-between ml-5">
+                          <span
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ backgroundColor: `${PRIORITY_COLOR[task.priority]}18`, color: PRIORITY_COLOR[task.priority] }}
+                          >
+                            {task.priority}
+                          </span>
+                          <span className="flex items-center gap-1 text-[9px] text-slate-500">
+                            {task.ai ? (
+                              <>
+                                <Bot size={10} className="text-emerald-600" />
+                                <span className="text-emerald-600 font-semibold">AI</span>
+                              </>
+                            ) : (
+                              <>
+                                <User size={10} className="text-slate-500" />
+                                <span>Human</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-
-              {/* Tasks */}
-              <div className="flex-1 p-3 space-y-2 overflow-y-auto max-h-[520px]">
-                {filtered.length === 0 ? (
-                  <p className="text-[10px] text-slate-400 italic py-2">Nessun task.</p>
-                ) : (
-                  filtered.map(task => (
-                    <div
-                      key={task.id}
-                      draggable
-                      onDragStart={() => handleDragStart(task.id, col.id)}
-                      onClick={() => setSelectedTask({ task, columnId: col.id })}
-                      className={`w-full bg-white rounded-xl p-3 border text-left cursor-grab active:cursor-grabbing transition-all
-                        ${draggedTask?.taskId === task.id ? "opacity-50 border-blue-400" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"}`}
-                    >
-                      <div className="flex items-start gap-2 mb-2">
-                        <GripVertical size={12} className="mt-0.5 text-slate-400 flex-shrink-0" />
-                        <p className="text-[11px] font-medium text-slate-900 flex-1 leading-tight">{task.title}</p>
-                      </div>
-                      <div className="flex items-center justify-between ml-5">
-                        <span
-                          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ backgroundColor: `${PRIORITY_COLOR[task.priority]}18`, color: PRIORITY_COLOR[task.priority] }}
-                        >
-                          {task.priority}
-                        </span>
-                        <span className="flex items-center gap-1 text-[9px] text-slate-500">
-                          {task.ai ? (
-                            <>
-                              <Bot size={10} className="text-emerald-600" />
-                              <span className="text-emerald-600 font-semibold">AI</span>
-                            </>
-                          ) : (
-                            <>
-                              <User size={10} className="text-slate-500" />
-                              <span>Human</span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Task detail panel */}
       {selectedTask && (
@@ -218,16 +267,15 @@ export default function MaintenancePage() {
           <div className="flex items-start justify-between mb-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-sm font-semibold text-slate-900">{selectedTask.task.title}</h3>
-                {selectedTask.task.ai && (
+                <h3 className="text-sm font-semibold text-slate-900">{selectedTask.title}</h3>
+                {selectedTask.ai && (
                   <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
                     <Bot size={8} /> AI Generated
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">ID: {selectedTask.task.id}</p>
             </div>
-            <button onClick={() => setSelectedTask(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
+            <button onClick={() => setSelectedTaskId(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Chiudi dettaglio">
               <X size={14} />
             </button>
           </div>
@@ -235,25 +283,25 @@ export default function MaintenancePage() {
           <div className="space-y-3">
             <div>
               <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Descrizione</p>
-              <p className="text-xs text-slate-600">{selectedTask.task.description}</p>
+              <p className="text-xs text-slate-600">{selectedTask.description || "Nessuna descrizione fornita."}</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Priorità</p>
                 <span
                   className="inline-flex text-xs font-bold px-2 py-1 rounded-lg"
-                  style={{ backgroundColor: `${PRIORITY_COLOR[selectedTask.task.priority]}18`, color: PRIORITY_COLOR[selectedTask.task.priority] }}
+                  style={{ backgroundColor: `${PRIORITY_COLOR[selectedTask.priority]}18`, color: PRIORITY_COLOR[selectedTask.priority] }}
                 >
-                  {selectedTask.task.priority}
+                  {selectedTask.priority}
                 </span>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Origine</p>
-                <p className="text-xs font-semibold text-slate-700">{selectedTask.task.ai ? "AI" : "Manuale"}</p>
+                <p className="text-xs font-semibold text-slate-700">{selectedTask.ai ? "AI" : "Manuale"}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Assegnato a</p>
-                <p className="text-xs font-semibold text-slate-700">{selectedTask.task.assignedTo}</p>
+                <p className="text-xs font-semibold text-slate-700">{selectedTask.assignedTo ?? "—"}</p>
               </div>
             </div>
 
@@ -261,10 +309,10 @@ export default function MaintenancePage() {
             <div>
               <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Sposta in</p>
               <div className="grid grid-cols-3 gap-2">
-                {columns.map(col => (
+                {BOARD_COLUMNS.map(col => (
                   <button
                     key={col.id}
-                    onClick={() => moveTask(selectedTask.task.id, selectedTask.columnId, col.id)}
+                    onClick={() => void moveTask(selectedTask, col.id)}
                     disabled={col.id === selectedTask.columnId}
                     className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors
                       ${col.id === selectedTask.columnId
@@ -280,7 +328,7 @@ export default function MaintenancePage() {
 
             {/* Delete button */}
             <button
-              onClick={() => deleteTask(selectedTask.task.id, selectedTask.columnId)}
+              onClick={() => void deleteTask(selectedTask)}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
             >
               <Trash2 size={12} /> Elimina Attività
@@ -292,10 +340,15 @@ export default function MaintenancePage() {
       {/* New task modal */}
       {showNewModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
+          <form onSubmit={submitNewTask} className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-slate-900">Nuova Attività Studio</p>
-              <button onClick={() => setShowNewModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowNewModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
+                aria-label="Chiudi"
+              >
                 <X size={15} />
               </button>
             </div>
@@ -323,35 +376,35 @@ export default function MaintenancePage() {
                   <option value="medium">Priorità Media</option>
                   <option value="low">Priorità Bassa</option>
                 </select>
-                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={form.isAi}
-                    onChange={e => setForm({ ...form, isAi: e.target.checked })}
-                    className="w-4 h-4 rounded"
-                  />
-                  <span className="text-sm text-slate-700">Generato da AI</span>
-                </label>
+                <input
+                  value={form.assignedTo}
+                  onChange={e => setForm({ ...form, assignedTo: e.target.value })}
+                  placeholder="Assegnato a"
+                  className="rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
+                />
               </div>
             </div>
+            {formError && <p className="mt-3 text-xs font-semibold text-red-600">{formError}</p>}
             <div className="flex items-center justify-end gap-2 mt-4">
               <button
+                type="button"
                 onClick={() => setShowNewModal(false)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
               >
                 Annulla
               </button>
               <button
-                onClick={submitNewTask}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700"
+                type="submit"
+                disabled={submitting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
               >
+                {submitting && <LoaderCircle size={12} className="animate-spin" />}
                 Salva Attività
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
   );
 }
-

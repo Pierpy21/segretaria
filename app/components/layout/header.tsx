@@ -1,13 +1,40 @@
-import { Search, Plus, Bell, ChevronDown, Menu } from "lucide-react";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { Search, Plus, Bell, Menu, LogOut } from "lucide-react";
+import { useApiData } from "@/app/hooks/use-api-data";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { MeResponse } from "@/app/types/api";
 
 interface HeaderProps {
   onMenuClick?: () => void;
 }
 
+function initialsOf(text: string | null | undefined): string {
+  if (!text) return "?";
+  const parts = text.split(/[\s@._-]+/).filter(Boolean);
+  return (parts[0]?.[0] ?? "?").concat(parts[1]?.[0] ?? "").toUpperCase();
+}
+
 export default function Header({ onMenuClick }: HeaderProps) {
+  const router = useRouter();
+  const { data: me } = useApiData<MeResponse>("/api/me");
+
+  const email = me?.user.email ?? null;
+  const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
+
+  async function signOut() {
+    try {
+      await createSupabaseBrowserClient().auth.signOut();
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
+  }
+
   return (
     <header className="flex-shrink-0 bg-white flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-200">
-      
+
       {/* Mobile Hamburger Menu Toggle */}
       <button
         onClick={onMenuClick}
@@ -29,12 +56,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right Actions & Status Elements */}
       <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
-        
+
         {/* Primary Action Button */}
         <button className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors whitespace-nowrap">
           <Plus size={14} /> <span className="hidden sm:inline">Nuovo Appuntamento</span><span className="sm:hidden">Appunt.</span>
         </button>
-        
+
         {/* Secondary Action Button - hidden on small mobile */}
         <button className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors whitespace-nowrap">
           <Plus size={14} /> Nuovo Piano di Cura
@@ -47,22 +74,29 @@ export default function Header({ onMenuClick }: HeaderProps) {
         </div>
 
 
-        {/* Notification Bell Badge */}
-        <button className="relative p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors">
+        {/* Notification Bell */}
+        <button className="relative p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Notifiche">
           <Bell size={17} />
-          <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-white text-[10px] flex items-center justify-center font-bold bg-blue-600">
-            5
-          </span>
         </button>
 
-        {/* User Profile Dropdown Triggers */}
-        <button className="flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white bg-blue-600">
-            GS
-          </div>
-          <ChevronDown size={13} />
+        {/* Utente & studio */}
+        <div className="hidden md:flex flex-col items-end leading-tight min-w-0 max-w-[180px]">
+          <span className="text-xs font-semibold text-slate-900 truncate max-w-full" title={studioName}>{studioName}</span>
+          <span className="text-[10px] text-slate-500 truncate max-w-full" title={email ?? undefined}>{email ?? ""}</span>
+        </div>
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white bg-blue-600 flex-shrink-0"
+          title={email ?? undefined}
+        >
+          {initialsOf(email)}
+        </div>
+
+        <button
+          onClick={signOut}
+          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+        >
+          <LogOut size={13} /> <span className="hidden sm:inline">Esci</span>
         </button>
-        
       </div>
     </header>
   );

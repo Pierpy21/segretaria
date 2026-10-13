@@ -1,3 +1,9 @@
+// ============================================================================
+// SCHEMA DRIZZLE — SOLO TIPI E QUERY.
+// La fonte di verità dello schema è supabase/migrations/*.sql (applicate con
+// la Supabase CLI). Questo file deve restare allineato alle migration: NON
+// usare drizzle-kit generate/push. `pnpm db:check` valida solo la configurazione.
+// ============================================================================
 import {
   pgTable,
   pgEnum,
@@ -9,9 +15,14 @@ import {
   date,
   timestamp,
   jsonb,
-  uniqueIndex,
   index,
+  unique,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { authUsers } from "drizzle-orm/supabase";
+import type { InsuranceCardData, PreviousVisitNote, SelectedToothData, TreatmentHistoryItem, XRayFinding } from "@/app/types/patients";
 
 // ============================================================================
 // ENUM TYPES
@@ -69,14 +80,18 @@ export const quoteStatusEnum = pgEnum("quote_status", [
 // --------------------------------------------------------------------------
 // companies — tenant root, referenced by every other table
 // --------------------------------------------------------------------------
-export const companies = pgTable("companies", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  customMetadata: jsonb("custom_metadata").notNull().default({}),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const companies = pgTable(
+  "companies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    customMetadata: jsonb("custom_metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("companies_slug_key").on(table.slug)]
+);
 
 // --------------------------------------------------------------------------
 // company_members — maps auth.users → company (N:M)
@@ -88,24 +103,24 @@ export const companyMembers = pgTable(
     companyId: uuid("company_id")
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
-    userId: uuid("user_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("member"),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("company_members_company_user_idx").on(
-      table.companyId,
-      table.userId
-    ),
+    unique("company_members_company_id_user_id_key").on(table.companyId, table.userId),
     index("idx_company_members_user").on(table.userId),
     index("idx_company_members_company").on(table.companyId),
+    index("company_members_user_company_role_idx").on(table.userId, table.companyId, table.role),
   ]
 );
 
 // --------------------------------------------------------------------------
-// calendar_events — from CalendarEventData
+// calendar_events — from CalendarEventData (manuali + importati via sync)
 // --------------------------------------------------------------------------
 export const calendarEvents = pgTable(
   "calendar_events",
@@ -115,20 +130,65 @@ export const calendarEvents = pgTable(
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
-    eventTime: timestamp("event_time", { withTimezone: true }).notNull(),
-    eventDate: date("event_date").notNull(),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    allDay: boolean("all_day").notNull().default(false),
     color: text("color"),
     source: eventSourceEnum("source").notNull().default("manual"),
     description: text("description").notNull().default(""),
     isAiGenerated: boolean("is_ai_generated").notNull().default(false),
-    createdBy: uuid("created_by"),
+    externalProvider: text("external_provider", { enum: ["google", "apple"] }),
+    externalId: text("external_id"),
+    externalEtag: text("external_etag"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_calendar_events_company").on(table.companyId),
-    index("idx_calendar_events_date").on(table.companyId, table.eventDate),
+    index("idx_calendar_events_start").on(table.companyId, table.startAt),
+    index("calendar_events_created_by_idx").on(table.createdBy),
+    uniqueIndex("calendar_events_external_uniq")
+      .on(table.companyId, table.externalProvider, table.externalId)
+      .where(sql`${table.externalId} is not null`),
+    check(
+      "calendar_events_external_provider_check",
+      sql`${table.externalProvider} in ('google', 'apple')`
+    ),
+    check(
+      "calendar_events_external_ref_chk",
+      sql`(${table.externalProvider} is null) = (${table.externalId} is null)`
+    ),
+    check("calendar_events_end_after_start_chk", sql`${table.endAt} >= ${table.startAt}`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// calendar_connections — collegamento Google/Apple per azienda (credenziali cifrate)
+// --------------------------------------------------------------------------
+export const calendarConnections = pgTable(
+  "calendar_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["google", "apple"] }).notNull(),
+    account: text("account"),
+    /** Google calendar id oppure URL CalDAV */
+    calendarId: text("calendar_id"),
+    calendarName: text("calendar_name"),
+    /** Payload AES-256-GCM (lib/calendar-sync/crypto.ts) */
+    credentialsEncrypted: text("credentials_encrypted").notNull(),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("calendar_connections_company_id_provider_key").on(table.companyId, table.provider),
+    check("calendar_connections_provider_check", sql`${table.provider} in ('google', 'apple')`),
   ]
 );
 
@@ -146,7 +206,7 @@ export const reminders = pgTable(
     remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
     priority: reminderPriorityEnum("priority").notNull().default("medium"),
     status: reminderStatusEnum("status").notNull().default("active"),
-    createdBy: uuid("created_by"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -154,6 +214,7 @@ export const reminders = pgTable(
   (table) => [
     index("idx_reminders_company").on(table.companyId),
     index("idx_reminders_status").on(table.companyId, table.status),
+    index("reminders_created_by_idx").on(table.createdBy),
   ]
 );
 
@@ -171,10 +232,11 @@ export const tasks = pgTable(
     priority: taskPriorityEnum("priority").notNull().default("medium"),
     isAi: boolean("is_ai").notNull().default(false),
     description: text("description").notNull().default(""),
+    /** UUID membro (nullable). L'assegnatario testuale della UI vive in custom_metadata.assignedTo */
     assignedTo: uuid("assigned_to"),
     columnId: taskColumnEnum("column_id").notNull().default("todo"),
     position: integer("position").notNull().default(0),
-    createdBy: uuid("created_by"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -182,6 +244,7 @@ export const tasks = pgTable(
   (table) => [
     index("idx_tasks_company").on(table.companyId),
     index("idx_tasks_column").on(table.companyId, table.columnId),
+    index("tasks_created_by_idx").on(table.createdBy),
   ]
 );
 
@@ -202,13 +265,14 @@ export const conversations = pgTable(
     isAi: boolean("is_ai").notNull().default(false),
     initials: text("initials"),
     color: text("color"),
-    createdBy: uuid("created_by"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_conversations_company").on(table.companyId),
+    index("conversations_created_by_idx").on(table.createdBy),
   ]
 );
 
@@ -228,7 +292,7 @@ export const messages = pgTable(
     senderType: messageFromEnum("sender_type").notNull(),
     body: text("body").notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
-    createdBy: uuid("created_by"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -237,6 +301,7 @@ export const messages = pgTable(
     index("idx_messages_company").on(table.companyId),
     index("idx_messages_conversation").on(table.conversationId),
     index("idx_messages_conv_sent_at").on(table.conversationId, table.sentAt),
+    index("messages_created_by_idx").on(table.createdBy),
   ]
 );
 
@@ -252,12 +317,12 @@ export const quotes = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     client: text("client").notNull(),
     quoteType: text("quote_type").notNull().default(""),
-    quoteDate: date("quote_date").notNull().defaultNow(),
+    quoteDate: date("quote_date", { mode: "string" }).notNull().defaultNow(),
     status: quoteStatusEnum("status").notNull().default("pending_ai"),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
     description: text("description").notNull().default(""),
     isAiGenerated: boolean("is_ai_generated").notNull().default(false),
-    createdBy: uuid("created_by"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -265,6 +330,44 @@ export const quotes = pgTable(
   (table) => [
     index("idx_quotes_company").on(table.companyId),
     index("idx_quotes_status").on(table.companyId, table.status),
+    index("quotes_created_by_idx").on(table.createdBy),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// patients — from Patient (id applicativo = code, es. "PT-2026-0142")
+// --------------------------------------------------------------------------
+export const patients = pgTable(
+  "patients",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    gender: text("gender", { enum: ["F", "M"] }).notNull(),
+    avatar: text("avatar").notNull().default(""),
+    dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    address: text("address").notNull().default(""),
+    fiscalCode: text("fiscal_code").notNull().default(""),
+    recommendation: text("recommendation").notNull().default(""),
+    insurance: jsonb("insurance").$type<InsuranceCardData>().notNull().default({} as InsuranceCardData),
+    previousVisit: jsonb("previous_visit").$type<PreviousVisitNote>().notNull().default({} as PreviousVisitNote),
+    selectedTooth: jsonb("selected_tooth").$type<SelectedToothData>().notNull().default({} as SelectedToothData),
+    xrayFindings: jsonb("xray_findings").$type<XRayFinding[]>().notNull().default([] as XRayFinding[]),
+    treatments: jsonb("treatments").$type<TreatmentHistoryItem[]>().notNull().default([] as TreatmentHistoryItem[]),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    customMetadata: jsonb("custom_metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("patients_company_id_code_key").on(table.companyId, table.code),
+    index("idx_patients_created_by").on(table.createdBy),
+    check("patients_gender_check", sql`${table.gender} in ('F', 'M')`),
   ]
 );
 
@@ -280,6 +383,9 @@ export type NewCompanyMember = typeof companyMembers.$inferInsert;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type NewCalendarEvent = typeof calendarEvents.$inferInsert;
 
+export type CalendarConnection = typeof calendarConnections.$inferSelect;
+export type NewCalendarConnection = typeof calendarConnections.$inferInsert;
+
 export type Reminder = typeof reminders.$inferSelect;
 export type NewReminder = typeof reminders.$inferInsert;
 
@@ -294,3 +400,7 @@ export type NewMessage = typeof messages.$inferInsert;
 
 export type Quote = typeof quotes.$inferSelect;
 export type NewQuote = typeof quotes.$inferInsert;
+
+/** Riga DB dei pazienti (il tipo UI è `Patient` in app/types/patients.ts) */
+export type PatientRow = typeof patients.$inferSelect;
+export type NewPatientRow = typeof patients.$inferInsert;

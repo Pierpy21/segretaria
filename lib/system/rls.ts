@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { adminDb, type Tx } from "./db-admin";
+import { getAdminDb, type Tx } from "./db-admin";
 
 export type { Tx };
 
@@ -19,7 +19,7 @@ export async function withRLS<T>(
   claims: VerifiedClaims,
   cb: (tx: Tx) => Promise<T>
 ): Promise<T> {
-  return adminDb.transaction(async (tx) => {
+  return getAdminDb().transaction(async (tx) => {
     await tx.execute(sql`set local role authenticated`);
     await tx.execute(
       sql`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`

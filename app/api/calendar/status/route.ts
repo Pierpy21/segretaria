@@ -1,12 +1,14 @@
-import { apiOk, toApiFailure } from "@/lib/calendar-sync/http";
-import { getStatus } from "@/lib/calendar-sync";
+import { apiOk, handleApiError } from "@/lib/api";
+import { getSyncStatus } from "@/lib/calendar-sync";
+import { requireCompany } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return apiOk(await getStatus());
+    const { companyId } = await requireCompany();
+    return apiOk(await getSyncStatus(companyId));
   } catch (err) {
-    return toApiFailure(err);
+    return handleApiError(err);
   }
 }

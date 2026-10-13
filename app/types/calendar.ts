@@ -24,8 +24,8 @@ export interface ReminderItem {
 }
 
 export interface CalendarEventData {
-  /** ID numerico: positivo per eventi locali, negativo stabile per eventi sincronizzati */
-  id: number;
+  /** UUID della riga su DB */
+  id: string;
   title: string;
   /** Data YYYY-MM-DD */
   date: string;
@@ -41,7 +41,7 @@ export interface CalendarEventData {
 }
 
 export interface ReminderData {
-  id: number;
+  id: string;
   text: string;
   time: string;
   priority: ReminderPriority;
