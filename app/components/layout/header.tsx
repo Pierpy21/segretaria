@@ -2,23 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { Search, Plus, Bell, Menu, LogOut } from "lucide-react";
-import { useApiData } from "@/app/hooks/use-api-data";
+import { useMe, initialsOf } from "@/app/hooks/use-me";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { MeResponse } from "@/app/types/api";
 
 interface HeaderProps {
   onMenuClick?: () => void;
 }
 
-function initialsOf(text: string | null | undefined): string {
-  if (!text) return "?";
-  const parts = text.split(/[\s@._-]+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "?").concat(parts[1]?.[0] ?? "").toUpperCase();
-}
-
 export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
-  const { data: me } = useApiData<MeResponse>("/api/me");
+  const { data: me } = useMe();
 
   const email = me?.user.email ?? null;
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");

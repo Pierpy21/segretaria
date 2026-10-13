@@ -5,6 +5,7 @@ import { Plus, X, Bot, User, Trash2, GripVertical, Filter, LoaderCircle } from "
 import { BOARD_COLUMNS, PRIORITY_COLOR } from "@/app/constants/maintenance";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
 import type { TaskPriority, ColumnId, FilterSource } from "@/app/types/maintenance";
 import type { BoardTask, CreateTaskInput, UpdateTaskInput } from "@/app/types/api";
@@ -57,6 +58,7 @@ export default function MaintenancePage() {
         body: JSON.stringify(body),
       });
       tasksHook.mutate(list => (list ?? []).map(t => (t.id === task.id ? updated : t)));
+      refreshBadges();
     } catch (err) {
       tasksHook.mutate(list =>
         (list ?? []).map(t => (t.id === task.id ? { ...t, columnId: task.columnId, position: task.position } : t))
@@ -72,6 +74,7 @@ export default function MaintenancePage() {
     tasksHook.mutate(list => (list ?? []).filter(t => t.id !== task.id));
     try {
       await apiFetch<null>(`/api/tasks/${encodeURIComponent(task.id)}`, { method: "DELETE" });
+      refreshBadges();
     } catch (err) {
       tasksHook.mutate(list => [...(list ?? []), task]);
       setActionError(errorMessage(err));
@@ -97,6 +100,7 @@ export default function MaintenancePage() {
     try {
       const created = await apiFetch<BoardTask>("/api/tasks", { method: "POST", body: JSON.stringify(body) });
       tasksHook.mutate(list => [...(list ?? []), created]);
+      refreshBadges();
       setForm(EMPTY_FORM);
       setShowNewModal(false);
     } catch (err) {

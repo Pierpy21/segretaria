@@ -32,6 +32,7 @@ import {
 } from "@/app/lib/calendar-dates";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import type { ViewMode, CalendarEventData, ReminderData, ReminderPriority, ReminderStatus, EventSource } from "@/app/types/calendar";
 import type { SyncProvider, ProviderStatus, SyncStatusResponse } from "@/app/types/calendar-sync";
@@ -139,6 +140,7 @@ export default function CalendarPage() {
     } finally {
       setSyncing(false);
       reloadEvents();
+      refreshBadges();
     }
   }, [from, to, reloadEvents]);
 
@@ -259,6 +261,7 @@ export default function CalendarPage() {
       await apiFetch<null>(`/api/calendar/events/${encodeURIComponent(ev.id)}`, { method: "DELETE" });
       mutateEvents(prev => (prev ?? []).filter(e => e.id !== ev.id));
       setSelectedEventId(null);
+      refreshBadges();
     } catch (err) {
       setActionError(errorMessage(err));
     } finally {
@@ -305,6 +308,7 @@ export default function CalendarPage() {
         body: JSON.stringify(body),
       });
       mutateEvents(prev => [...(prev ?? []).filter(e => e.id !== created.id), created]);
+      refreshBadges();
       closeAddModal();
     } catch (err) {
       setFormError(errorMessage(err));

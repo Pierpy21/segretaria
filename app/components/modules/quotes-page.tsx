@@ -6,6 +6,7 @@ import QuotesTable from "@/app/components/quotas-table";
 import { STATUS_META } from "@/app/constants/quotes";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
 import { parseAmount } from "@/app/lib/amount";
 import type { Quote, QuoteStatus } from "@/app/types/quotes";
@@ -55,6 +56,7 @@ export default function QuotesPage() {
         body: JSON.stringify({ status }),
       });
       quotesHook.mutate(list => (list ?? []).map(x => (x.id === q.id ? updated : x)));
+      refreshBadges();
     } catch (err) {
       quotesHook.mutate(list => (list ?? []).map(x => (x.id === q.id ? { ...x, status: q.status } : x)));
       setActionError(errorMessage(err));
@@ -68,6 +70,7 @@ export default function QuotesPage() {
     quotesHook.mutate(list => (list ?? []).filter(x => x.id !== q.id));
     try {
       await apiFetch<null>(`/api/quotes/${encodeURIComponent(q.id)}`, { method: "DELETE" });
+      refreshBadges();
     } catch (err) {
       quotesHook.mutate(list => [q, ...(list ?? [])]);
       setActionError(errorMessage(err));
@@ -125,6 +128,7 @@ export default function QuotesPage() {
         const created = await apiFetch<Quote>("/api/quotes", { method: "POST", body: JSON.stringify(payload) });
         quotesHook.mutate(list => [created, ...(list ?? [])]);
       }
+      refreshBadges();
       closeModal();
       setForm(EMPTY_FORM);
     } catch (err) {

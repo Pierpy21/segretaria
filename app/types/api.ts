@@ -98,3 +98,18 @@ export interface CreateQuoteInput {
 // POST  /api/patients body CreatePatientInput → Patient
 // PATCH /api/patients/[id] body Partial<CreatePatientInput> → Patient
 export type CreatePatientInput = Omit<Patient, "id" | "age" | "initials">;
+
+// ─── Badge sidebar (contatori reali) ────────────────────────────────────────
+// GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.
+export interface SidebarBadges {
+  /** Pazienti creati negli ultimi 7 giorni */
+  patients: number;
+  /** Somma dei messaggi non letti di tutte le conversazioni */
+  chat: number;
+  /** Appuntamenti di oggi non ancora iniziati (fuso CALENDAR_TIMEZONE) */
+  calendar: number;
+  /** Attività aperte (todo + in-progress) con priorità alta */
+  tasks: number;
+  /** Preventivi da gestire (status pending_ai) */
+  quotes: number;
+}

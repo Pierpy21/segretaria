@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import type { Patient } from "@/app/types/patients";
 import type { CreatePatientInput } from "@/app/types/api";
@@ -151,6 +152,7 @@ export default function PatientsPage() {
         body: JSON.stringify(buildNewPatient(form)),
       });
       patientsHook.mutate(list => [...(list ?? []), created]);
+      refreshBadges();
       setShowNewModal(false);
       openDetail(created.id);
     } catch (err) {

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Bot, Search, Send, Check, X, Sparkles, ArrowLeft, LoaderCircle } from "lucide-react";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import type { ChatListItem, Message } from "@/app/types/messaging";
 import type { CreateMessageInput } from "@/app/types/api";
@@ -54,9 +55,11 @@ export default function MessagingPage() {
     if (chat.unread > 0) {
       mutateChats(list => (list ?? []).map(c => (c.id === chat.id ? { ...c, unread: 0 } : c)));
       // Non bloccante: il contatore si riallinea al prossimo caricamento
-      apiFetch<null>(`/api/conversations/${encodeURIComponent(chat.id)}/read`, { method: "POST" }).catch(() => {
-        /* ignorato */
-      });
+      apiFetch<null>(`/api/conversations/${encodeURIComponent(chat.id)}/read`, { method: "POST" })
+        .catch(() => {
+          /* ignorato */
+        })
+        .finally(refreshBadges);
     }
   }
 
@@ -74,6 +77,7 @@ export default function MessagingPage() {
       mutateChats(list =>
         (list ?? []).map(c => (c.id === selectedId ? { ...c, snippet: created.text, time: created.time } : c))
       );
+      refreshBadges();
       setDraftText(null);
       if (!draftId) setReplyText("");
     } catch (err) {

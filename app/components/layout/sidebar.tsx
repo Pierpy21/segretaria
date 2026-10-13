@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { LucideIcon, Bot, LogOut } from "lucide-react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useMe, roleLabel, initialsOf } from "@/app/hooks/use-me";
 
 interface NavLinkItem {
   icon: LucideIcon;
   label: string;
+  /** Conteggio reale; mostrato solo se > 0 (oltre 99 → "99+") */
   badge?: number;
 }
 
@@ -16,7 +20,27 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+function formatBadge(count: number): string {
+  return count > 99 ? "99+" : String(count);
+}
+
 export default function Sidebar({ navLinks, activeNav, setActiveNav, isOpen = false, onClose }: SidebarProps) {
+  const { data: me } = useMe();
+  const [signingOut, setSigningOut] = useState(false);
+
+  const email = me?.user.email ?? null;
+  const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
+  const role = roleLabel(me?.company?.role);
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await createSupabaseBrowserClient().auth.signOut();
+    } finally {
+      window.location.href = "/login";
+    }
+  }
+
   return (
     <>
       {/* Mobile Backdrop Overlay */}
@@ -81,11 +105,11 @@ export default function Sidebar({ navLinks, activeNav, setActiveNav, isOpen = fa
               <Icon size={16} className="flex-shrink-0" />
               <span className="flex-1 leading-tight text-[13px]">{label}</span>
               
-              {badge != null && (
+              {badge != null && badge > 0 && (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full
                   ${active ? "bg-white/20 text-white" : "bg-blue-500 text-white"}`}
                 >
-                  {badge}
+                  {formatBadge(badge)}
                 </span>
               )}
             </button>
@@ -96,16 +120,24 @@ export default function Sidebar({ navLinks, activeNav, setActiveNav, isOpen = fa
       {/* User Footer */}
       <div className="px-4 py-4 border-t border-slate-700/40">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 bg-blue-500">
-            CR
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 bg-blue-500"
+            title={email ?? undefined}
+          >
+            {initialsOf(email)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">Dott. Giovanni Scognamiglio</p>
-            <p className="text-[11px] text-slate-400 truncate">Direttore Sanitario</p>
+            <p className="text-sm font-semibold text-white truncate" title={email ?? undefined}>{email ?? "…"}</p>
+            <p className="text-[11px] text-slate-400 truncate" title={studioName}>
+              {role ? `${role} · ${studioName}` : studioName}
+            </p>
           </div>
           <button
-            className="p-1.5 rounded-lg text-slate-500 hover:bg-white/10 hover:text-slate-300 transition-colors"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className="p-1.5 rounded-lg text-slate-500 hover:bg-white/10 hover:text-slate-300 transition-colors disabled:opacity-50"
             title="Logout"
+            aria-label="Esci"
           >
             <LogOut size={14} />
           </button>
