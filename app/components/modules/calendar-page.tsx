@@ -165,6 +165,13 @@ export default function CalendarPage() {
   const headerLabel =
     view === "Month" ? formatMonthLabel(selectedDate) : view === "Week" ? formatWeekLabel(selectedDate) : formatLongDate(selectedDate);
 
+  const todayISO = toISODate(new Date());
+  const isTodayVisible = from <= todayISO && todayISO < to;
+
+  function goToToday() {
+    if (!isTodayVisible) setSelectedDate(todayISO);
+  }
+
   function shiftDate(dir: -1 | 1) {
     setSelectedDate(prev => (view === "Month" ? addMonths(prev, dir) : addDays(prev, view === "Week" ? 7 * dir : dir)));
   }
@@ -369,7 +376,7 @@ export default function CalendarPage() {
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Agenda & Appuntamenti Studio</h2>
               <p className="text-xs text-slate-500">
-                {headerLabel} — Planning Poltrone Odontoiatriche
+                Planning Poltrone Odontoiatriche
                 {(eventsHook.loading || syncing) && <span className="ml-2 text-[10px] text-slate-400">Aggiornamento…</span>}
               </p>
             </div>
@@ -384,10 +391,13 @@ export default function CalendarPage() {
                   <ChevronLeft size={14} />
                 </button>
                 <button
-                  onClick={() => setSelectedDate(toISODate(new Date()))}
-                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  onClick={goToToday}
+                  title="Torna a oggi"
+                  aria-label="Torna a oggi"
+                  className={`min-w-[13rem] sm:min-w-[15rem] whitespace-nowrap text-center px-2 py-1 rounded-lg text-sm font-semibold text-slate-800 transition-colors
+                    ${isTodayVisible ? "cursor-default" : "cursor-pointer hover:bg-slate-100"}`}
                 >
-                  Oggi
+                  {headerLabel}
                 </button>
                 <button
                   onClick={() => shiftDate(1)}
