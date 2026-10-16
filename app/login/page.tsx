@@ -92,17 +92,17 @@ export default function LoginPage() {
   }
 
   const inputClass =
-    "w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600";
+    "w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+    <main className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-line p-6 shadow-sm">
         <div className="mb-5">
-          <h1 className="text-base font-bold text-slate-900">SegretarIA Dental</h1>
-          <p className="text-xs text-slate-500">Accedi alla gestione del tuo studio odontoiatrico</p>
+          <h1 className="text-base font-bold text-ink">SegretarIA Dental</h1>
+          <p className="text-xs text-ink-muted">Accedi alla gestione del tuo studio odontoiatrico</p>
         </div>
 
-        <div role="tablist" className="grid grid-cols-2 gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1 mb-5">
+        <div role="tablist" className="grid grid-cols-2 gap-1 bg-surface-muted border border-line rounded-xl p-1 mb-5">
           {(["login", "register"] as const).map(m => (
             <button
               key={m}
@@ -111,7 +111,7 @@ export default function LoginPage() {
               aria-selected={mode === m}
               onClick={() => switchMode(m)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
-                ${mode === m ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"}`}
+                ${mode === m ? "bg-accent text-accent-ink" : "text-ink-muted hover:bg-surface-muted"}`}
             >
               {m === "login" ? "Accedi" : "Registrati"}
             </button>
@@ -120,7 +120,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
           <div>
-            <label htmlFor="email" className="block text-xs font-bold text-slate-800 mb-1">
+            <label htmlFor="email" className="block text-xs font-bold text-ink mb-1">
               Email
             </label>
             <input
@@ -135,7 +135,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-xs font-bold text-slate-800 mb-1">
+            <label htmlFor="password" className="block text-xs font-bold text-ink mb-1">
               Password
             </label>
             <input
@@ -163,7 +163,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting ? (
               <LoaderCircle size={13} className="animate-spin" />

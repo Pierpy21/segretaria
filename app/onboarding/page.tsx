@@ -58,8 +58,8 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+    <main className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-line p-6 shadow-sm">
         {checking ? (
           <div className="space-y-3">
             <Skeleton className="h-5 w-40" />
@@ -69,13 +69,13 @@ export default function OnboardingPage() {
         ) : (
           <>
             <div className="mb-5">
-              <h1 className="text-base font-bold text-slate-900">Configura il tuo studio</h1>
-              <p className="text-xs text-slate-500">Serve un solo passaggio prima di iniziare.</p>
+              <h1 className="text-base font-bold text-ink">Configura il tuo studio</h1>
+              <p className="text-xs text-ink-muted">Serve un solo passaggio prima di iniziare.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
               <div>
-                <label htmlFor="studio-name" className="block text-xs font-bold text-slate-800 mb-1">
+                <label htmlFor="studio-name" className="block text-xs font-bold text-ink mb-1">
                   Nome dello studio
                 </label>
                 <input
@@ -84,20 +84,20 @@ export default function OnboardingPage() {
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="Es. Studio Dentistico Dott. Rossi"
-                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
-              <label className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
+              <label className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-line cursor-pointer hover:bg-surface-muted">
                 <input
                   type="checkbox"
                   checked={seedDemo}
                   onChange={e => setSeedDemo(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-slate-300"
+                  className="mt-0.5 w-4 h-4 rounded border-line-strong accent-accent"
                 />
                 <span>
-                  <span className="block text-xs font-semibold text-slate-800">Carica dati demo</span>
-                  <span className="block text-[11px] text-slate-500">Pazienti, appuntamenti, chat e preventivi di esempio.</span>
+                  <span className="block text-xs font-semibold text-ink">Carica dati demo</span>
+                  <span className="block text-[11px] text-ink-muted">Pazienti, appuntamenti, chat e preventivi di esempio.</span>
                 </span>
               </label>
 
@@ -110,7 +110,7 @@ export default function OnboardingPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {submitting && <LoaderCircle size={13} className="animate-spin" />}
                 {submitting ? "Creazione in corso…" : "Crea studio"}
