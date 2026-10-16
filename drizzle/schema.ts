@@ -23,7 +23,16 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { authUsers } from "drizzle-orm/supabase";
-import type { InsuranceCardData, PreviousVisitNote, SelectedToothData, TreatmentHistoryItem, XRayFinding } from "@/app/types/patients";
+import type {
+  ClientAttributes,
+  ClientFieldType,
+  InsuranceCardData,
+  PreviousVisitNote,
+  SelectedToothData,
+  Sector,
+  TreatmentHistoryItem,
+  XRayFinding,
+} from "@/app/types/clients";
 
 // ============================================================================
 // ENUM TYPES
@@ -87,6 +96,7 @@ export const companies = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
+    sector: text("sector").$type<Sector>().notNull().default("generico"),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -336,10 +346,10 @@ export const quotes = pgTable(
 );
 
 // --------------------------------------------------------------------------
-// patients — from Patient (id applicativo = code, es. "PT-2026-0142")
+// clients — from Client (id applicativo = code, es. "PT-2026-0142")
 // --------------------------------------------------------------------------
-export const patients = pgTable(
-  "patients",
+export const clients = pgTable(
+  "clients",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id")
@@ -355,26 +365,30 @@ export const patients = pgTable(
     address: text("address").notNull().default(""),
     fiscalCode: text("fiscal_code").notNull().default(""),
     insurance: jsonb("insurance").$type<InsuranceCardData>().notNull().default({} as InsuranceCardData),
+    clientType: text("client_type").notNull().default("generico"),
+    /** Campi personalizzati NON sensibili (i sensibili stanno in client_clinical.attributes) */
+    attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("patients_company_id_code_key").on(table.companyId, table.code),
-    unique("patients_id_company_id_key").on(table.id, table.companyId),
-    index("idx_patients_created_by").on(table.createdBy),
-    check("patients_gender_check", sql`${table.gender} in ('F', 'M')`),
+    unique("clients_company_id_code_key").on(table.companyId, table.code),
+    unique("clients_id_company_id_key").on(table.id, table.companyId),
+    index("idx_clients_created_by").on(table.createdBy),
+    check("clients_gender_check", sql`${table.gender} in ('F', 'M')`),
+    check("clients_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
   ]
 );
 
 // --------------------------------------------------------------------------
-// patient_clinical — dati clinici (RLS: negati al ruolo accountant)
+// client_clinical — dati clinici (RLS: negati al ruolo accountant)
 // --------------------------------------------------------------------------
-export const patientClinical = pgTable(
-  "patient_clinical",
+export const clientClinical = pgTable(
+  "client_clinical",
   {
-    patientId: uuid("patient_id").primaryKey(),
+    clientId: uuid("client_id").primaryKey(),
     companyId: uuid("company_id")
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
@@ -383,16 +397,49 @@ export const patientClinical = pgTable(
     selectedTooth: jsonb("selected_tooth").$type<SelectedToothData>().notNull().default({} as SelectedToothData),
     xrayFindings: jsonb("xray_findings").$type<XRayFinding[]>().notNull().default([] as XRayFinding[]),
     treatments: jsonb("treatments").$type<TreatmentHistoryItem[]>().notNull().default([] as TreatmentHistoryItem[]),
+    /** Valori dei campi con sensitive = true */
+    attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     foreignKey({
-      name: "patient_clinical_patient_fkey",
-      columns: [table.patientId, table.companyId],
-      foreignColumns: [patients.id, patients.companyId],
+      name: "client_clinical_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
     }).onDelete("cascade"),
-    index("idx_patient_clinical_company").on(table.companyId),
+    index("idx_client_clinical_company").on(table.companyId),
+    check("client_clinical_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// client_field_definitions — campi personalizzati per company + tipo cliente
+// --------------------------------------------------------------------------
+export const clientFieldDefinitions = pgTable(
+  "client_field_definitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientType: text("client_type").notNull(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    type: text("type").$type<ClientFieldType>().notNull(),
+    options: jsonb("options").$type<string[]>().notNull().default([]),
+    required: boolean("required").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    sensitive: boolean("sensitive").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("client_field_definitions_key_unique").on(table.companyId, table.clientType, table.key),
+    index("idx_client_field_definitions_company").on(table.companyId, table.clientType, table.position),
+    check("client_field_definitions_type_check", sql`${table.type} in ('text', 'number', 'date', 'select', 'bool')`),
+    check("client_field_definitions_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check("client_field_definitions_options_array", sql`jsonb_typeof(${table.options}) = 'array'`),
   ]
 );
 
@@ -426,8 +473,10 @@ export type NewMessage = typeof messages.$inferInsert;
 export type Quote = typeof quotes.$inferSelect;
 export type NewQuote = typeof quotes.$inferInsert;
 
-/** Riga DB dei pazienti (il tipo UI è `Patient` in app/types/patients.ts) */
-export type PatientRow = typeof patients.$inferSelect;
-export type NewPatientRow = typeof patients.$inferInsert;
-export type PatientClinicalRow = typeof patientClinical.$inferSelect;
-export type NewPatientClinicalRow = typeof patientClinical.$inferInsert;
+/** Riga DB dei clienti (il tipo UI è `Client` in app/types/clients.ts) */
+export type ClientRow = typeof clients.$inferSelect;
+export type NewClientRow = typeof clients.$inferInsert;
+export type ClientClinicalRow = typeof clientClinical.$inferSelect;
+export type NewClientClinicalRow = typeof clientClinical.$inferInsert;
+export type ClientFieldDefinitionRow = typeof clientFieldDefinitions.$inferSelect;
+export type NewClientFieldDefinitionRow = typeof clientFieldDefinitions.$inferInsert;

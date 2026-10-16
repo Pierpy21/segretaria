@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
-import { calendarEvents, conversations, patients, quotes, tasks } from "@/drizzle/schema";
+import { calendarEvents, clients, conversations, quotes, tasks } from "@/drizzle/schema";
 import type { SidebarBadges } from "@/app/types/api";
 import { getCalendarTimeZone, wallInZone, wallToUtcMs } from "@/lib/calendar-sync/time";
 
@@ -69,9 +69,9 @@ export async function getSidebarBadges(tx: Tx, companyId: string): Promise<Sideb
     tasks: unknown;
     quotes: unknown;
   }>(sql`select
-      (select count(*) from ${patients} where ${and(
-        eq(patients.companyId, companyId),
-        gte(patients.createdAt, sevenDaysAgo)
+      (select count(*) from ${clients} where ${and(
+        eq(clients.companyId, companyId),
+        gte(clients.createdAt, sevenDaysAgo)
       )}) as patients,
       (select coalesce(sum(${conversations.unreadCount}), 0) from ${conversations} where ${eq(
         conversations.companyId,

@@ -12,13 +12,14 @@ export async function POST(request: Request) {
     if (me.company) return apiFail("Hai già uno studio associato", 409);
 
     const input = parseOnboardingInput(await readJsonObject(request));
-    const created = await createCompany(input.name, input.seedDemo);
+    const created = await createCompany(input.name, input.seedDemo, input.sector);
 
     const role: CompanyRole = "owner";
     const company: NonNullable<MeResponse["company"]> = {
       id: created.id,
       name: created.name,
       slug: created.slug,
+      sector: input.sector,
       role,
     };
     return apiOk(company, 201);
