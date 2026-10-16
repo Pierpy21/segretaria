@@ -9,8 +9,9 @@ import {
   conversations,
   messages,
   quotes,
-  patients,
-  patientClinical,
+  clients,
+  clientClinical,
+  clientFieldDefinitions,
 } from "./schema";
 
 // ============================================================================
@@ -31,7 +32,18 @@ export const companiesRelations = relations(companies, ({ many }) => ({
   conversations: many(conversations),
   messages: many(messages),
   quotes: many(quotes),
-  patients: many(patients),
+  clients: many(clients),
+  clientFieldDefinitions: many(clientFieldDefinitions),
+}));
+
+// --------------------------------------------------------------------------
+// client_field_definitions belongs to company
+// --------------------------------------------------------------------------
+export const clientFieldDefinitionsRelations = relations(clientFieldDefinitions, ({ one }) => ({
+  company: one(companies, {
+    fields: [clientFieldDefinitions.companyId],
+    references: [companies.id],
+  }),
 }));
 
 // --------------------------------------------------------------------------
@@ -123,22 +135,22 @@ export const quotesRelations = relations(quotes, ({ one }) => ({
 }));
 
 // --------------------------------------------------------------------------
-// patients belongs to company
+// clients belongs to company
 // --------------------------------------------------------------------------
-export const patientsRelations = relations(patients, ({ one }) => ({
+export const clientsRelations = relations(clients, ({ one }) => ({
   company: one(companies, {
-    fields: [patients.companyId],
+    fields: [clients.companyId],
     references: [companies.id],
   }),
-  clinical: one(patientClinical),
+  clinical: one(clientClinical),
 }));
 
 // --------------------------------------------------------------------------
-// patient_clinical belongs to patient (1:1)
+// client_clinical belongs to client (1:1)
 // --------------------------------------------------------------------------
-export const patientClinicalRelations = relations(patientClinical, ({ one }) => ({
-  patient: one(patients, {
-    fields: [patientClinical.patientId],
-    references: [patients.id],
+export const clientClinicalRelations = relations(clientClinical, ({ one }) => ({
+  client: one(clients, {
+    fields: [clientClinical.clientId],
+    references: [clients.id],
   }),
 }));

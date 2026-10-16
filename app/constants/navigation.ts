@@ -27,10 +27,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutDashboard, permission: "reports:read",
   },
   {
-    area: "studio", href: "/pazienti", label: "Pazienti",
-    title: "Elenco & Cartelle Cliniche Pazienti",
-    subtitle: "Anagrafica studio, storico prestazioni e schede cliniche con radiografie",
-    icon: Users, permission: "patients:read", badge: "patients",
+    area: "studio", href: "/clienti", label: "Clienti",
+    title: "Elenco & Schede Clienti",
+    subtitle: "Anagrafica studio, storico prestazioni e schede con campi del settore",
+    icon: Users, permission: "clients:read", badge: "patients",
   },
   {
     area: "studio", href: "/chat", label: "Chat",
@@ -73,9 +73,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: FileText, permission: "quotes:read",
   },
   {
-    area: "contabile", href: "/contabile/pazienti", label: "Pazienti",
-    title: "Anagrafica Pazienti", subtitle: "Dati anagrafici e assicurativi dei pazienti dello studio",
-    icon: Users, permission: "patients:read",
+    area: "contabile", href: "/contabile/clienti", label: "Clienti",
+    title: "Anagrafica Clienti", subtitle: "Dati anagrafici e assicurativi dei clienti dello studio",
+    icon: Users, permission: "clients:read",
   },
   {
     area: "contabile", href: "/", label: "Area studio",

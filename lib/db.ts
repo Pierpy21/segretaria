@@ -89,6 +89,7 @@ async function selectMembership(tx: Tx, userId: string) {
       companyId: companies.id,
       name: companies.name,
       slug: companies.slug,
+      sector: companies.sector,
       role: companyMembers.role,
     })
     .from(companyMembers)
@@ -123,7 +124,7 @@ export const getMe = cache(async (): Promise<MeResponse> => {
   return {
     user,
     company: m
-      ? { id: m.companyId, name: m.name, slug: m.slug, role: m.role as CompanyRole }
+      ? { id: m.companyId, name: m.name, slug: m.slug, sector: m.sector, role: m.role as CompanyRole }
       : null,
     role,
     profile: role ? profileOf(role) : null,

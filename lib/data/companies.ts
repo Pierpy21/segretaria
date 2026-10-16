@@ -1,7 +1,9 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withUser } from "@/lib/db";
+import { companies } from "@/drizzle/schema";
+import type { Sector } from "@/app/types/clients";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
 import { ConflictError, ValidationError, pgConstraintName } from "@/lib/errors";
 import { seedDemoData } from "./seed";
@@ -19,10 +21,12 @@ export interface CreatedCompany {
 
 /**
  * Crea lo studio e iscrive l'utente come owner (funzione SECURITY DEFINER create_company).
+ * Imposta il settore e i campi personalizzati di default (seed_client_field_defaults, SECURITY INVOKER:
+ * le policy di scrittura valgono; l'owner è iscritto dal trigger AFTER INSERT sulla stessa tx).
  * Con seedDemo popola i dati demo nella stessa transazione.
  * Lo slug ha un suffisso casuale; in caso di collisione si riprova.
  */
-export async function createCompany(name: string, seedDemo: boolean): Promise<CreatedCompany> {
+export async function createCompany(name: string, seedDemo: boolean, sector: Sector): Promise<CreatedCompany> {
   const trimmed = name.trim();
   if (!trimmed) throw new ValidationError("Il nome dello studio è obbligatorio");
 
@@ -39,7 +43,10 @@ export async function createCompany(name: string, seedDemo: boolean): Promise<Cr
         const companyId = rows[0]?.id;
         if (!companyId) throw new Error("create_company non ha restituito un id");
 
-        if (seedDemo) await seedDemoData(tx, companyId, tz);
+        await tx.update(companies).set({ sector }).where(eq(companies.id, companyId));
+        await tx.execute(sql`select public.seed_client_field_defaults(${companyId}, ${sector})`);
+
+        if (seedDemo) await seedDemoData(tx, companyId, tz, sector);
         return companyId;
       });
       return { id, name: trimmed, slug };
