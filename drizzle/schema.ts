@@ -19,6 +19,7 @@ import {
   unique,
   uniqueIndex,
   check,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { authUsers } from "drizzle-orm/supabase";
@@ -353,12 +354,7 @@ export const patients = pgTable(
     email: text("email").notNull().default(""),
     address: text("address").notNull().default(""),
     fiscalCode: text("fiscal_code").notNull().default(""),
-    recommendation: text("recommendation").notNull().default(""),
     insurance: jsonb("insurance").$type<InsuranceCardData>().notNull().default({} as InsuranceCardData),
-    previousVisit: jsonb("previous_visit").$type<PreviousVisitNote>().notNull().default({} as PreviousVisitNote),
-    selectedTooth: jsonb("selected_tooth").$type<SelectedToothData>().notNull().default({} as SelectedToothData),
-    xrayFindings: jsonb("xray_findings").$type<XRayFinding[]>().notNull().default([] as XRayFinding[]),
-    treatments: jsonb("treatments").$type<TreatmentHistoryItem[]>().notNull().default([] as TreatmentHistoryItem[]),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -366,8 +362,37 @@ export const patients = pgTable(
   },
   (table) => [
     unique("patients_company_id_code_key").on(table.companyId, table.code),
+    unique("patients_id_company_id_key").on(table.id, table.companyId),
     index("idx_patients_created_by").on(table.createdBy),
     check("patients_gender_check", sql`${table.gender} in ('F', 'M')`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// patient_clinical — dati clinici (RLS: negati al ruolo accountant)
+// --------------------------------------------------------------------------
+export const patientClinical = pgTable(
+  "patient_clinical",
+  {
+    patientId: uuid("patient_id").primaryKey(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    recommendation: text("recommendation").notNull().default(""),
+    previousVisit: jsonb("previous_visit").$type<PreviousVisitNote>().notNull().default({} as PreviousVisitNote),
+    selectedTooth: jsonb("selected_tooth").$type<SelectedToothData>().notNull().default({} as SelectedToothData),
+    xrayFindings: jsonb("xray_findings").$type<XRayFinding[]>().notNull().default([] as XRayFinding[]),
+    treatments: jsonb("treatments").$type<TreatmentHistoryItem[]>().notNull().default([] as TreatmentHistoryItem[]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "patient_clinical_patient_fkey",
+      columns: [table.patientId, table.companyId],
+      foreignColumns: [patients.id, patients.companyId],
+    }).onDelete("cascade"),
+    index("idx_patient_clinical_company").on(table.companyId),
   ]
 );
 
@@ -404,3 +429,5 @@ export type NewQuote = typeof quotes.$inferInsert;
 /** Riga DB dei pazienti (il tipo UI è `Patient` in app/types/patients.ts) */
 export type PatientRow = typeof patients.$inferSelect;
 export type NewPatientRow = typeof patients.$inferInsert;
+export type PatientClinicalRow = typeof patientClinical.$inferSelect;
+export type NewPatientClinicalRow = typeof patientClinical.$inferInsert;

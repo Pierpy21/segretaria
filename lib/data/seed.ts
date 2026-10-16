@@ -4,6 +4,7 @@ import {
   calendarEvents,
   conversations,
   messages,
+  patientClinical,
   patients,
   quotes,
   reminders,
@@ -137,12 +138,22 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string): Promi
     email: p.email,
     address: p.address,
     fiscalCode: p.fiscalCode,
-    recommendation: p.recommendation,
     insurance: p.insurance,
-    previousVisit: p.previousVisit,
-    selectedTooth: p.selectedTooth,
-    xrayFindings: p.xrayFindings,
-    treatments: p.treatments,
   }));
-  await tx.insert(patients).values(patientRows);
+  const inserted = await tx
+    .insert(patients)
+    .values(patientRows)
+    .returning({ id: patients.id, code: patients.code });
+  const idByCode = new Map(inserted.map((r) => [r.code, r.id]));
+  await tx.insert(patientClinical).values(
+    INITIAL_PATIENTS.map((p) => ({
+      patientId: idByCode.get(p.id)!,
+      companyId,
+      recommendation: p.recommendation,
+      previousVisit: p.previousVisit,
+      selectedTooth: p.selectedTooth,
+      xrayFindings: p.xrayFindings,
+      treatments: p.treatments,
+    })),
+  );
 }

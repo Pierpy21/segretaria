@@ -2,7 +2,14 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
-import { patients, type NewPatientRow, type PatientRow } from "@/drizzle/schema";
+import {
+  patientClinical,
+  patients,
+  type NewPatientClinicalRow,
+  type NewPatientRow,
+  type PatientClinicalRow,
+  type PatientRow,
+} from "@/drizzle/schema";
 import type { CreatePatientInput, ClinicalPatientKey, PatientResponse } from "@/app/types/api";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
@@ -18,8 +25,27 @@ const CLINICAL_KEYS: readonly ClinicalPatientKey[] = [
   "treatments",
 ];
 
-/** `clinical` = il ruolo ha clinical:read: solo allora i campi clinici sono inclusi. */
-function toPatient(row: PatientRow, now: Date, tz: string, clinical: boolean): PatientResponse {
+type ClinicalFields = Omit<NewPatientClinicalRow, "patientId" | "companyId" | "createdAt" | "updatedAt">;
+
+const EMPTY_CLINICAL = {
+  recommendation: "",
+  previousVisit: {},
+  selectedTooth: {},
+  xrayFindings: [],
+  treatments: [],
+} as unknown as Required<ClinicalFields>;
+
+/**
+ * I dati clinici stanno in patient_clinical (RLS: negati ad accountant).
+ * `clinical` = il ruolo ha clinical:read: solo allora la tabella è letta e i campi inclusi.
+ */
+function toPatient(
+  row: PatientRow,
+  clinicalRow: PatientClinicalRow | null,
+  now: Date,
+  tz: string,
+  clinical: boolean,
+): PatientResponse {
   const view: PatientResponse = {
     id: row.code,
     name: row.name,
@@ -35,11 +61,12 @@ function toPatient(row: PatientRow, now: Date, tz: string, clinical: boolean): P
     insurance: row.insurance,
   };
   if (clinical) {
-    view.recommendation = row.recommendation;
-    view.previousVisit = row.previousVisit;
-    view.selectedTooth = row.selectedTooth;
-    view.xrayFindings = row.xrayFindings;
-    view.treatments = row.treatments;
+    const c = clinicalRow ?? EMPTY_CLINICAL;
+    view.recommendation = c.recommendation;
+    view.previousVisit = c.previousVisit;
+    view.selectedTooth = c.selectedTooth;
+    view.xrayFindings = c.xrayFindings;
+    view.treatments = c.treatments;
   }
   return view;
 }
@@ -65,12 +92,18 @@ function newPatientCode(now: Date): string {
 export async function listPatients(tx: Tx, companyId: string, clinical: boolean): Promise<PatientResponse[]> {
   const now = new Date();
   const tz = getCalendarTimeZone();
+  const where = eq(patients.companyId, companyId);
+  if (!clinical) {
+    const rows = await tx.select().from(patients).where(where).orderBy(asc(patients.name));
+    return rows.map((row) => toPatient(row, null, now, tz, false));
+  }
   const rows = await tx
-    .select()
+    .select({ patient: patients, clinical: patientClinical })
     .from(patients)
-    .where(eq(patients.companyId, companyId))
+    .leftJoin(patientClinical, eq(patientClinical.patientId, patients.id))
+    .where(where)
     .orderBy(asc(patients.name));
-  return rows.map((row) => toPatient(row, now, tz, clinical));
+  return rows.map((r) => toPatient(r.patient, r.clinical, now, tz, true));
 }
 
 /** `code` è l'id applicativo del paziente (es. "PT-2026-0142"). */
@@ -88,7 +121,17 @@ export async function getPatient(
     .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
     .limit(1);
   const row = rows[0];
-  return row ? toPatient(row, now, tz, clinical) : null;
+  if (!row) return null;
+  return toPatient(row, clinical ? await getClinicalRow(tx, row.id) : null, now, tz, clinical);
+}
+
+async function getClinicalRow(tx: Tx, patientId: string): Promise<PatientClinicalRow | null> {
+  const rows = await tx
+    .select()
+    .from(patientClinical)
+    .where(eq(patientClinical.patientId, patientId))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 /**
@@ -115,8 +158,10 @@ export async function createPatient(
     email: input.email ?? "",
     address: input.address ?? "",
     fiscalCode: input.fiscalCode ?? "",
-    recommendation: input.recommendation ?? "",
     insurance: input.insurance,
+  };
+  const clinicalValues: ClinicalFields = {
+    recommendation: input.recommendation ?? "",
     previousVisit: input.previousVisit,
     selectedTooth: input.selectedTooth,
     xrayFindings: input.xrayFindings,
@@ -130,7 +175,13 @@ export async function createPatient(
       .onConflictDoNothing()
       .returning();
     const row = inserted[0];
-    if (row) return toPatient(row, now, tz, clinical);
+    if (row) {
+      const [clinicalRow] = await tx
+        .insert(patientClinical)
+        .values({ ...clinicalValues, patientId: row.id, companyId })
+        .returning();
+      return toPatient(row, clinicalRow, now, tz, clinical);
+    }
   }
   throw new ConflictError("Impossibile generare un codice paziente univoco, riprova");
 }
@@ -157,12 +208,14 @@ export async function updatePatient(
   if (patch.email !== undefined) set.email = patch.email;
   if (patch.address !== undefined) set.address = patch.address;
   if (patch.fiscalCode !== undefined) set.fiscalCode = patch.fiscalCode;
-  if (patch.recommendation !== undefined) set.recommendation = patch.recommendation;
   if (patch.insurance !== undefined) set.insurance = patch.insurance;
-  if (patch.previousVisit !== undefined) set.previousVisit = patch.previousVisit;
-  if (patch.selectedTooth !== undefined) set.selectedTooth = patch.selectedTooth;
-  if (patch.xrayFindings !== undefined) set.xrayFindings = patch.xrayFindings;
-  if (patch.treatments !== undefined) set.treatments = patch.treatments;
+
+  const clinicalSet: ClinicalFields = {};
+  if (patch.recommendation !== undefined) clinicalSet.recommendation = patch.recommendation;
+  if (patch.previousVisit !== undefined) clinicalSet.previousVisit = patch.previousVisit;
+  if (patch.selectedTooth !== undefined) clinicalSet.selectedTooth = patch.selectedTooth;
+  if (patch.xrayFindings !== undefined) clinicalSet.xrayFindings = patch.xrayFindings;
+  if (patch.treatments !== undefined) clinicalSet.treatments = patch.treatments;
 
   const updated = await tx
     .update(patients)
@@ -171,5 +224,17 @@ export async function updatePatient(
     .returning();
   const row = updated[0];
   if (!row) throw new NotFoundError("Paziente non trovato");
-  return toPatient(row, now, tz, clinical);
+  if (!clinical) return toPatient(row, null, now, tz, false);
+
+  // Upsert: un paziente senza riga clinica (es. inserito fuori dall'app) la ottiene qui.
+  const clinicalRow = Object.keys(clinicalSet).length
+    ? (
+        await tx
+          .insert(patientClinical)
+          .values({ ...clinicalSet, patientId: row.id, companyId })
+          .onConflictDoUpdate({ target: patientClinical.patientId, set: { ...clinicalSet, updatedAt: now } })
+          .returning()
+      )[0]
+    : await getClinicalRow(tx, row.id);
+  return toPatient(row, clinicalRow, now, tz, true);
 }

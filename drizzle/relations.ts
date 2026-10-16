@@ -10,6 +10,7 @@ import {
   messages,
   quotes,
   patients,
+  patientClinical,
 } from "./schema";
 
 // ============================================================================
@@ -128,5 +129,16 @@ export const patientsRelations = relations(patients, ({ one }) => ({
   company: one(companies, {
     fields: [patients.companyId],
     references: [companies.id],
+  }),
+  clinical: one(patientClinical),
+}));
+
+// --------------------------------------------------------------------------
+// patient_clinical belongs to patient (1:1)
+// --------------------------------------------------------------------------
+export const patientClinicalRelations = relations(patientClinical, ({ one }) => ({
+  patient: one(patients, {
+    fields: [patientClinical.patientId],
+    references: [patients.id],
   }),
 }));
