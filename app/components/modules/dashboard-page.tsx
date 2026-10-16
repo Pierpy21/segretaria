@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { MessageSquare, Calendar, Wrench, FileText, type LucideIcon } from "lucide-react";
 import KpiCards from "@/app/components/kpi-cards";
 import MessagingHub from "@/app/components/messaging-hub";
@@ -30,10 +31,6 @@ interface KpiItem {
   spark: number[];
 }
 
-interface DashboardPageProps {
-  onNavigate: (label: string) => void;
-}
-
 /** Sparkline decorativa che termina con il valore reale */
 function sparkFor(n: number): number[] {
   return [Math.max(0, n - 5), Math.max(0, n - 3), Math.max(0, n - 4), Math.max(0, n - 2), Math.max(0, n - 1), n];
@@ -60,7 +57,8 @@ function Gate({
   return <>{children}</>;
 }
 
-export default function DashboardPage({ onNavigate }: DashboardPageProps) {
+export default function DashboardPage() {
+  const router = useRouter();
   const [today] = useState(() => toISODate(new Date()));
   const week = getVisibleRange("Week", today);
 
@@ -91,7 +89,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       sub: `${unreadTotal} messaggi non letti`,
       up: true,
       icon: MessageSquare,
-      accent: "#3b82f6",
+      accent: "#e04a95",
       spark: sparkFor(chats.length),
     },
     {
@@ -100,7 +98,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       sub: "Questa settimana",
       up: true,
       icon: Calendar,
-      accent: "#0d9488",
+      accent: "#4b2d20",
       spark: sparkFor(weekEvents.length),
     },
     {
@@ -118,7 +116,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       sub: `${formatEuro(openQuotesTotal)} in accettazione`,
       up: true,
       icon: FileText,
-      accent: "#8b5cf6",
+      accent: "#8c5a3c",
       spark: sparkFor(openQuotes.length),
     },
   ];
@@ -183,8 +181,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           <QuotesTable
             data={quotes.slice(0, 5)}
             statusMap={statusMap}
-            onView={() => onNavigate("Piani di Cura & Preventivi")}
-            onEdit={() => onNavigate("Piani di Cura & Preventivi")}
+            onView={() => router.push("/preventivi")}
+            onEdit={() => router.push("/preventivi")}
           />
         </Gate>
       </div>

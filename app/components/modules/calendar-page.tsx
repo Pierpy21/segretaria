@@ -358,33 +358,33 @@ export default function CalendarPage() {
       {/* ── Main column ── */}
       <div className="space-y-4 min-w-0">
         {bannerMessages.length > 0 && (
-          <div className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
             <div className="space-y-0.5 min-w-0">
               {bannerMessages.map(msg => (
                 <p key={msg}>{msg}</p>
               ))}
             </div>
-            <button onClick={clearErrors} className="p-0.5 rounded text-red-400 hover:text-red-700 flex-shrink-0" title="Chiudi" aria-label="Chiudi">
+            <button onClick={clearErrors} className="p-0.5 rounded text-red-800 hover:text-red-950 flex-shrink-0" title="Chiudi" aria-label="Chiudi">
               <X size={12} />
             </button>
           </div>
         )}
 
         {/* Calendar card */}
-        <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100">
+        <div className="bg-surface rounded-2xl overflow-hidden flex flex-col border border-line">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-line">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Agenda & Appuntamenti Studio</h2>
-              <p className="text-xs text-slate-500">
+              <h2 className="text-sm font-semibold text-ink">Agenda & Appuntamenti Studio</h2>
+              <p className="text-xs text-ink-muted">
                 Planning Poltrone Odontoiatriche
-                {(eventsHook.loading || syncing) && <span className="ml-2 text-[10px] text-slate-400">Aggiornamento…</span>}
+                {(eventsHook.loading || syncing) && <span className="ml-2 text-[10px] text-ink-muted">Aggiornamento…</span>}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => shiftDate(-1)}
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="p-1.5 rounded-lg border border-line text-ink-muted hover:bg-surface-muted transition-colors"
                   title="Precedente"
                   aria-label="Precedente"
                 >
@@ -394,27 +394,27 @@ export default function CalendarPage() {
                   onClick={goToToday}
                   title="Torna a oggi"
                   aria-label="Torna a oggi"
-                  className={`min-w-[13rem] sm:min-w-[15rem] whitespace-nowrap text-center px-2 py-1 rounded-lg text-sm font-semibold text-slate-800 transition-colors
-                    ${isTodayVisible ? "cursor-default" : "cursor-pointer hover:bg-slate-100"}`}
+                  className={`min-w-[13rem] sm:min-w-[15rem] whitespace-nowrap text-center px-2 py-1 rounded-lg text-sm font-semibold text-ink transition-colors
+                    ${isTodayVisible ? "cursor-default" : "cursor-pointer hover:bg-surface-muted"}`}
                 >
                   {headerLabel}
                 </button>
                 <button
                   onClick={() => shiftDate(1)}
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="p-1.5 rounded-lg border border-line text-ink-muted hover:bg-surface-muted transition-colors"
                   title="Successivo"
                   aria-label="Successivo"
                 >
                   <ChevronRight size={14} />
                 </button>
               </div>
-              <div className="flex gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
+              <div className="flex gap-1 bg-surface-muted border border-line rounded-lg p-1">
                 {([["Month", "Mese"], ["Week", "Settimana"], ["Day", "Giorno"]] as const).map(([v, label]) => (
                   <button
                     key={v}
                     onClick={() => setView(v as ViewMode)}
                     className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors
-                      ${view === v ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"}`}
+                      ${view === v ? "bg-accent text-accent-ink" : "text-ink-muted hover:bg-line"}`}
                   >
                     {label}
                   </button>
@@ -422,7 +422,7 @@ export default function CalendarPage() {
               </div>
               <button
                 onClick={openAddModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover transition-colors"
               >
                 <Plus size={13} /> Nuovo Appuntamento
               </button>
@@ -438,9 +438,9 @@ export default function CalendarPage() {
               {/* Month view */}
               {view === "Month" && (
                 <div>
-                  <div className="grid grid-cols-7 border-b border-slate-100">
+                  <div className="grid grid-cols-7 border-b border-line">
                     {DAYS_OF_WEEK.map(d => (
-                      <div key={d} className="py-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <div key={d} className="py-2 text-center text-[10px] font-bold uppercase tracking-wider text-ink-muted">
                         {d}
                       </div>
                     ))}
@@ -453,12 +453,12 @@ export default function CalendarPage() {
                           key={cell.date}
                           onClick={() => cell.inMonth && openDay(cell.date)}
                           disabled={!cell.inMonth}
-                          className={`min-h-[92px] p-1.5 flex flex-col gap-1 border-b border-r border-slate-100 text-left
-                            ${!cell.inMonth ? "bg-slate-50/60 cursor-default" : "hover:bg-slate-50 cursor-pointer"}`}
+                          className={`min-h-[92px] p-1.5 flex flex-col gap-1 border-b border-r border-line text-left
+                            ${!cell.inMonth ? "bg-surface-muted/60 cursor-default" : "hover:bg-surface-muted cursor-pointer"}`}
                         >
                           <span
                             className={`text-[11px] font-bold w-6 h-6 rounded-full flex items-center justify-center
-                              ${cell.isToday ? "bg-blue-600 text-white" : cell.inMonth ? "text-slate-700" : "text-slate-300"}`}
+                              ${cell.isToday ? "bg-accent text-accent-ink" : cell.inMonth ? "text-ink" : "text-ink-muted/50"}`}
                           >
                             {cell.dateNum}
                           </span>
@@ -475,7 +475,7 @@ export default function CalendarPage() {
                               </span>
                             ))}
                             {cellEvents.length > 2 && (
-                              <span className="text-[9px] font-semibold text-slate-400">+{cellEvents.length - 2} more</span>
+                              <span className="text-[9px] font-semibold text-ink-muted">+{cellEvents.length - 2} more</span>
                             )}
                           </div>
                         </button>
@@ -489,15 +489,15 @@ export default function CalendarPage() {
               {view === "Week" && (
                 <div className="grid grid-cols-7">
                   {weekCells.map((cell, i) => (
-                    <div key={cell.date} className="p-2.5 flex flex-col gap-1.5 border-r border-slate-100 last:border-r-0 min-h-[220px]">
+                    <div key={cell.date} className="p-2.5 flex flex-col gap-1.5 border-r border-line last:border-r-0 min-h-[220px]">
                       <div className="text-center mb-1">
-                        <p className={`text-[10px] font-bold uppercase tracking-wider ${cell.isToday ? "text-blue-600" : "text-slate-400"}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${cell.isToday ? "text-accent-text" : "text-ink-muted"}`}>
                           {DAYS_OF_WEEK[i]}
                         </p>
                         <button
                           onClick={() => openDay(cell.date)}
                           className={`text-sm font-bold mt-0.5 w-7 h-7 rounded-full flex items-center justify-center mx-auto
-                            ${cell.isToday ? "bg-blue-600 text-white" : "bg-transparent text-slate-700 hover:bg-slate-100"}`}
+                            ${cell.isToday ? "bg-accent text-accent-ink" : "bg-transparent text-ink hover:bg-surface-muted"}`}
                         >
                           {cell.dateNum}
                         </button>
@@ -513,9 +513,9 @@ export default function CalendarPage() {
               {/* Day view */}
               {view === "Day" && (
                 <div className="p-5 space-y-2.5">
-                  <p className="text-xs font-semibold text-slate-500 mb-2">{formatLongDate(selectedDate)}</p>
+                  <p className="text-xs font-semibold text-ink-muted mb-2">{formatLongDate(selectedDate)}</p>
                   {eventsFor(selectedDate).length === 0 && (
-                    <p className="text-xs text-slate-400 italic">Nessun evento in agenda per questo giorno.</p>
+                    <p className="text-xs text-ink-muted italic">Nessun evento in agenda per questo giorno.</p>
                   )}
                   {eventsFor(selectedDate).map(ev => (
                     <EventChip key={ev.id} event={ev} onClick={() => setSelectedEventId(ev.id)} expanded />
@@ -530,12 +530,12 @@ export default function CalendarPage() {
 
         {/* Selected event detail */}
         {selectedEvent && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-start gap-3">
+          <div className="bg-surface rounded-2xl border border-line p-4 flex items-start gap-3">
             <span className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: selectedEvent.color }} />
             <EventDetail event={selectedEvent} deleting={deleting} onDelete={() => deleteEvent(selectedEvent)} />
             <button
               onClick={() => setSelectedEventId(null)}
-              className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 flex-shrink-0"
+              className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted flex-shrink-0"
               aria-label="Chiudi dettaglio"
             >
               <X size={14} />
@@ -547,13 +547,13 @@ export default function CalendarPage() {
       {/* ── Sidebar column ── */}
       <div className="space-y-4">
         {/* Sync status */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
+        <div className="bg-surface rounded-2xl border border-line p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold text-slate-700">Calendar Sync</p>
+            <p className="text-xs font-bold text-ink">Calendar Sync</p>
             <button
               onClick={() => void syncNow()}
               disabled={syncing || !anyConnected}
-              className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-slate-900 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1 text-[10px] font-semibold text-ink-muted hover:text-ink disabled:opacity-50 transition-colors"
             >
               <RefreshCw size={11} className={syncing ? "animate-spin" : ""} /> Sincronizza ora
             </button>
@@ -574,12 +574,12 @@ export default function CalendarPage() {
               onClick={() => handleProviderClick("apple")}
             />
           </div>
-          {statusHook.error && <p className="mt-2 text-[10px] text-red-600">{statusHook.error}</p>}
+          {statusHook.error && <p className="mt-2 text-[10px] text-red-800">{statusHook.error}</p>}
         </div>
 
         {/* Reminders */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <p className="text-xs font-bold text-slate-700 mb-3">System Reminders & Maintenance Alarms</p>
+        <div className="bg-surface rounded-2xl border border-line p-4">
+          <p className="text-xs font-bold text-ink mb-3">System Reminders & Maintenance Alarms</p>
 
           {remindersHook.loading ? (
             <SkeletonRows rows={3} className="h-7" />
@@ -600,24 +600,24 @@ export default function CalendarPage() {
                             type="checkbox"
                             checked={false}
                             onChange={() => void updateReminder(r, "resolved")}
-                            className="w-3.5 h-3.5 rounded border-slate-300 flex-shrink-0"
+                            className="w-3.5 h-3.5 rounded border-line-strong flex-shrink-0 accent-accent"
                             aria-label={`Segna come risolto: ${r.text}`}
                           />
-                          <span className="text-xs flex-1 truncate text-slate-700">{r.text}</span>
-                          <span className="text-[10px] font-semibold flex-shrink-0 text-slate-400">{r.time}</span>
+                          <span className="text-xs flex-1 truncate text-ink">{r.text}</span>
+                          <span className="text-[10px] font-semibold flex-shrink-0 text-ink-muted">{r.time}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
                 {activeReminders.length === 0 && (
-                  <p className="text-xs text-slate-400 italic">Nessun avviso attivo.</p>
+                  <p className="text-xs text-ink-muted italic">Nessun avviso attivo.</p>
                 )}
               </div>
 
               {resolvedReminders.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <div className="mt-3 pt-3 border-t border-line">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">
                     Resolved today · {resolvedReminders.length}
                   </p>
                   <div className="space-y-1.5">
@@ -627,13 +627,13 @@ export default function CalendarPage() {
                           type="checkbox"
                           checked
                           onChange={() => void updateReminder(r, "active")}
-                          className="w-3.5 h-3.5 rounded border-slate-300 flex-shrink-0"
+                          className="w-3.5 h-3.5 rounded border-line-strong flex-shrink-0 accent-accent"
                           aria-label={`Riapri: ${r.text}`}
                         />
-                        <span className="text-xs flex-1 truncate text-slate-400 line-through">{r.text}</span>
+                        <span className="text-xs flex-1 truncate text-ink-muted line-through">{r.text}</span>
                         <button
                           onClick={() => void updateReminder(r, "archived")}
-                          className="p-1 rounded-md text-slate-400 hover:bg-slate-100 flex-shrink-0"
+                          className="p-1 rounded-md text-ink-muted hover:bg-surface-muted flex-shrink-0"
                           title="Archivia"
                           aria-label="Archivia"
                         >
@@ -651,13 +651,13 @@ export default function CalendarPage() {
 
       {/* ── Add Event modal (Nuovo Appuntamento) ── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border-2 border-slate-300 w-full max-w-sm p-5 shadow-2xl">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">
-              <p className="text-base font-bold text-slate-900">Nuovo Appuntamento Studio</p>
+        <div className="fixed inset-0 z-50 bg-sidebar/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl border-2 border-line-strong w-full max-w-sm p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-line">
+              <p className="text-base font-bold text-ink">Nuovo Appuntamento Studio</p>
               <button
                 onClick={closeAddModal}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-muted transition-colors"
                 title="Chiudi"
                 aria-label="Chiudi"
               >
@@ -667,28 +667,28 @@ export default function CalendarPage() {
 
             <div className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">Paziente & Prestazione</label>
+                <label className="block text-xs font-bold text-ink mb-1">Paziente & Prestazione</label>
                 <input
                   value={form.title}
                   onChange={e => setForm({ ...form, title: e.target.value })}
                   placeholder="Es. Elena Rossi — Urgenza dolore o Igiene"
-                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">Data</label>
+                <label className="block text-xs font-bold text-ink mb-1">Data</label>
                 <input
                   type="date"
                   value={form.date}
                   onChange={e => setForm({ ...form, date: e.target.value })}
-                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">Inizio</label>
+                  <label className="block text-xs font-bold text-ink mb-1">Inizio</label>
                   <input
                     type="time"
                     value={form.startTime}
@@ -700,62 +700,62 @@ export default function CalendarPage() {
                         endTime: startTime >= form.endTime ? addMinutesToTime(startTime, 60) : form.endTime,
                       });
                     }}
-                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">Fine</label>
+                  <label className="block text-xs font-bold text-ink mb-1">Fine</label>
                   <input
                     type="time"
                     value={form.endTime}
                     onChange={e => setForm({ ...form, endTime: e.target.value })}
-                    className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">Poltrona / Sincronizzazione</label>
+                <label className="block text-xs font-bold text-ink mb-1">Poltrona / Sincronizzazione</label>
                 <select
                   value={form.source}
                   onChange={e => setForm({ ...form, source: e.target.value as EventSource })}
-                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 font-bold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-bold outline-none focus:border-accent focus:ring-1 focus:ring-accent cursor-pointer"
                 >
-                  <option value="Manual" className="text-slate-900 font-semibold">Poltrona Studio (Manuale)</option>
-                  <option value="Google Calendar" disabled={!googleConnected} className="text-slate-900 font-semibold">
+                  <option value="Manual" className="text-ink font-semibold">Poltrona Studio (Manuale)</option>
+                  <option value="Google Calendar" disabled={!googleConnected} className="text-ink font-semibold">
                     Google Calendar Studio{googleConnected ? "" : " (non connesso)"}
                   </option>
-                  <option value="Apple Calendar" disabled={!appleConnected} className="text-slate-900 font-semibold">
+                  <option value="Apple Calendar" disabled={!appleConnected} className="text-ink font-semibold">
                     Apple Calendar{appleConnected ? "" : " (non connesso)"}
                   </option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">Note Cliniche & Materiali</label>
+                <label className="block text-xs font-bold text-ink mb-1">Note Cliniche & Materiali</label>
                 <textarea
                   value={form.description}
                   onChange={e => setForm({ ...form, description: e.target.value })}
                   placeholder="Dettagli poltrona, anestetico, cartella clinica (opzionale)"
                   rows={3}
-                  className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-500 font-medium outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 resize-none"
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted font-medium outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none"
                 />
               </div>
             </div>
 
-            {formError && <p className="mt-3 text-xs font-semibold text-red-600">{formError}</p>}
+            {formError && <p className="mt-3 text-xs font-semibold text-red-800">{formError}</p>}
 
-            <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-line">
               <button
                 onClick={closeAddModal}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 transition-colors"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-ink bg-surface-muted border border-line-strong hover:bg-line transition-colors"
               >
                 Annulla
               </button>
               <button
                 onClick={() => void submitNewEvent()}
                 disabled={submitting}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {submitting ? "Salvataggio…" : "Fissa Appuntamento"}
               </button>
@@ -766,17 +766,17 @@ export default function CalendarPage() {
 
       {/* ── Apple connect modal ── */}
       {showAppleModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-sidebar/60 backdrop-blur-xs flex items-center justify-center p-4">
           <form
             onSubmit={submitApple}
-            className="bg-white rounded-2xl border-2 border-slate-300 w-full max-w-sm p-5 shadow-2xl space-y-3.5"
+            className="bg-surface rounded-2xl border-2 border-line-strong w-full max-w-sm p-5 shadow-2xl space-y-3.5"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <p className="text-base font-bold text-slate-900">Collega Apple Calendar</p>
+            <div className="flex items-center justify-between pb-2 border-b border-line">
+              <p className="text-base font-bold text-ink">Collega Apple Calendar</p>
               <button
                 type="button"
                 onClick={() => setShowAppleModal(false)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-muted transition-colors"
                 aria-label="Chiudi"
               >
                 <X size={16} />
@@ -784,7 +784,7 @@ export default function CalendarPage() {
             </div>
 
             <div>
-              <label htmlFor="apple-id" className="block text-xs font-bold text-slate-800 mb-1">Apple ID</label>
+              <label htmlFor="apple-id" className="block text-xs font-bold text-ink mb-1">Apple ID</label>
               <input
                 id="apple-id"
                 type="email"
@@ -792,12 +792,12 @@ export default function CalendarPage() {
                 value={appleForm.appleId}
                 onChange={e => setAppleForm({ ...appleForm, appleId: e.target.value })}
                 placeholder="nome@icloud.com"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               />
             </div>
 
             <div>
-              <label htmlFor="apple-password" className="block text-xs font-bold text-slate-800 mb-1">Password specifica per app</label>
+              <label htmlFor="apple-password" className="block text-xs font-bold text-ink mb-1">Password specifica per app</label>
               <input
                 id="apple-password"
                 type="password"
@@ -805,11 +805,11 @@ export default function CalendarPage() {
                 value={appleForm.appPassword}
                 onChange={e => setAppleForm({ ...appleForm, appPassword: e.target.value })}
                 placeholder="xxxx-xxxx-xxxx-xxxx"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               />
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-ink-muted">
                 Non è la password del tuo Apple ID: generala su{" "}
-                <a href="https://account.apple.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">
+                <a href="https://account.apple.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-text underline">
                   account.apple.com
                 </a>
                 .
@@ -817,31 +817,31 @@ export default function CalendarPage() {
             </div>
 
             <div>
-              <label htmlFor="apple-calendar" className="block text-xs font-bold text-slate-800 mb-1">Nome calendario (opzionale)</label>
+              <label htmlFor="apple-calendar" className="block text-xs font-bold text-ink mb-1">Nome calendario (opzionale)</label>
               <input
                 id="apple-calendar"
                 type="text"
                 value={appleForm.calendarName}
                 onChange={e => setAppleForm({ ...appleForm, calendarName: e.target.value })}
                 placeholder="Es. Studio"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               />
             </div>
 
-            {appleError && <p className="text-xs font-semibold text-red-600">{appleError}</p>}
+            {appleError && <p className="text-xs font-semibold text-red-800">{appleError}</p>}
 
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-line">
               <button
                 type="button"
                 onClick={() => setShowAppleModal(false)}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 transition-colors"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-ink bg-surface-muted border border-line-strong hover:bg-line transition-colors"
               >
                 Annulla
               </button>
               <button
                 type="submit"
                 disabled={appleSubmitting}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {appleSubmitting && <LoaderCircle size={12} className="animate-spin" />}
                 {appleSubmitting ? "Collegamento…" : "Collega"}
@@ -867,13 +867,13 @@ function EventChip({ event, onClick, expanded }: { event: CalendarEventData; onC
       <div className="flex items-center gap-1">
         <p className="font-semibold text-[10px]" style={{ color: event.color }}>{event.time}</p>
         {event.isAiGenerated && (
-          <span className="flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+          <span className="flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded-full bg-emerald-50 text-emerald-800">
             <Bot size={7} /> AI
           </span>
         )}
       </div>
-      <p className="text-[11px] leading-tight mt-0.5 text-slate-700">{event.title}</p>
-      {expanded && <p className="text-[10px] leading-snug mt-1 text-slate-500">{event.description}</p>}
+      <p className="text-[11px] leading-tight mt-0.5 text-ink">{event.title}</p>
+      {expanded && <p className="text-[10px] leading-snug mt-1 text-ink-muted">{event.description}</p>}
     </button>
   );
 }
@@ -884,21 +884,21 @@ function EventDetail({ event, deleting, onDelete }: { event: CalendarEventData; 
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-1.5 mb-0.5">
-        <p className="text-sm font-semibold text-slate-900">{event.title}</p>
+        <p className="text-sm font-semibold text-ink">{event.title}</p>
         {event.isAiGenerated && (
-          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800">
             <Bot size={8} /> AI Scheduled
           </span>
         )}
       </div>
-      <p className="text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+      <p className="text-xs text-ink-muted mb-1.5 flex items-center gap-1">
         <SourceIcon size={11} /> {formatLongDate(event.date)} · {timeLabel} · {event.source}
       </p>
-      <p className="text-xs text-slate-600">{event.description}</p>
+      <p className="text-xs text-ink-muted">{event.description}</p>
       <button
         onClick={onDelete}
         disabled={deleting}
-        className="mt-2.5 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-60"
+        className="mt-2.5 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-red-800 border border-red-200 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-60"
       >
         <Trash2 size={11} /> {deleting ? "Eliminazione…" : "Elimina appuntamento"}
       </button>
@@ -924,14 +924,14 @@ function SyncRow({
   const disabled = loadingStatus || notConfigured || busy;
 
   const meta = loadingStatus
-    ? { icon: RefreshCw, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Verifica…" }
+    ? { icon: RefreshCw, color: "text-ink-muted", bg: "bg-surface-muted border-line", text: "Verifica…" }
     : notConfigured
-    ? { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non configurato" }
+    ? { icon: XCircle, color: "text-ink-muted", bg: "bg-surface-muted border-line", text: "Non configurato" }
     : rowStatus === "connected"
-    ? { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", text: "Sincronizzato" }
+    ? { icon: CheckCircle2, color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", text: "Sincronizzato" }
     : rowStatus === "syncing"
-    ? { icon: RefreshCw, color: "text-amber-600", bg: "bg-amber-50 border-amber-200", text: "In corso…" }
-    : { icon: XCircle, color: "text-slate-400", bg: "bg-slate-50 border-slate-200", text: "Non connesso" };
+    ? { icon: RefreshCw, color: "text-amber-800", bg: "bg-amber-50 border-amber-200", text: "In corso…" }
+    : { icon: XCircle, color: "text-ink-muted", bg: "bg-surface-muted border-line", text: "Non connesso" };
   const Icon = meta.icon;
 
   const lastSync = provider?.lastSync
@@ -948,8 +948,8 @@ function SyncRow({
           ${disabled ? "cursor-default" : "hover:brightness-95"}`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Calendar size={13} className="text-slate-500 flex-shrink-0" />
-          <span className="text-xs font-semibold text-slate-800 truncate">{label}</span>
+          <Calendar size={13} className="text-ink-muted flex-shrink-0" />
+          <span className="text-xs font-semibold text-ink truncate">{label}</span>
         </div>
         <span className={`flex items-center gap-1 text-[10px] font-bold flex-shrink-0 ${meta.color}`}>
           <Icon size={11} className={rowStatus === "syncing" ? "animate-spin" : ""} />
@@ -957,17 +957,17 @@ function SyncRow({
         </span>
       </button>
       {notConfigured && (
-        <p className="text-[10px] text-slate-400 px-1">Configura le variabili in .env.example</p>
+        <p className="text-[10px] text-ink-muted px-1">Configura le variabili in .env.example</p>
       )}
       {rowStatus === "connected" && (provider?.account || lastSync || provider?.calendarName) && (
-        <p className="text-[10px] text-slate-500 px-1 truncate">
+        <p className="text-[10px] text-ink-muted px-1 truncate">
           {provider?.account}
           {provider?.calendarName && ` · ${provider.calendarName}`}
           {provider?.account && lastSync && " · "}
           {lastSync && `ultimo sync ${lastSync}`}
         </p>
       )}
-      {provider?.error && <p className="text-[10px] text-red-600 px-1">{provider.error}</p>}
+      {provider?.error && <p className="text-[10px] text-red-800 px-1">{provider.error}</p>}
     </div>
   );
 }

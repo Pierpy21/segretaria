@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Search, Plus, Bell, Menu, LogOut } from "lucide-react";
 import { useMe, initialsOf } from "@/app/hooks/use-me";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { hasPermission } from "@/lib/auth/permissions";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -15,6 +16,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   const email = me?.user.email ?? null;
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
+  const canCreateAppointment = hasPermission(me?.role, "calendar:write");
+  const canCreateQuote = hasPermission(me?.role, "quotes:write");
 
   async function signOut() {
     try {
@@ -26,23 +29,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="flex-shrink-0 bg-white flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-200">
+    <header className="flex-shrink-0 bg-surface flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-line">
 
       {/* Mobile Hamburger Menu Toggle */}
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0"
+        className="lg:hidden p-2 rounded-xl text-ink hover:bg-surface-muted transition-colors flex-shrink-0"
         aria-label="Apri menu"
       >
         <Menu size={20} />
       </button>
 
       {/* Search Input Group */}
-      <div className="flex items-center gap-2 flex-1 max-w-xs rounded-xl px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 focus-within:border-blue-500 transition-colors">
-        <Search size={14} className="text-slate-400 flex-shrink-0" />
+      <div className="flex items-center gap-2 flex-1 max-w-xs rounded-xl px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm bg-surface-muted border border-line focus-within:border-accent transition-colors">
+        <Search size={14} className="text-ink-muted flex-shrink-0" />
         <input
           type="text"
-          className="bg-transparent outline-none flex-1 text-xs sm:text-sm text-slate-900 placeholder-slate-400 min-w-0"
+          className="bg-transparent outline-none flex-1 text-xs sm:text-sm text-ink placeholder-ink-muted min-w-0"
           placeholder="Cerca pazienti, cure…"
         />
       </div>
@@ -51,14 +54,18 @@ export default function Header({ onMenuClick }: HeaderProps) {
       <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
 
         {/* Primary Action Button */}
-        <button className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors whitespace-nowrap">
-          <Plus size={14} /> <span className="hidden sm:inline">Nuovo Appuntamento</span><span className="sm:hidden">Appunt.</span>
-        </button>
+        {canCreateAppointment && (
+          <button className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-accent-ink bg-accent hover:bg-accent-hover transition-colors whitespace-nowrap">
+            <Plus size={14} /> <span className="hidden sm:inline">Nuovo Appuntamento</span><span className="sm:hidden">Appunt.</span>
+          </button>
+        )}
 
         {/* Secondary Action Button - hidden on small mobile */}
-        <button className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors whitespace-nowrap">
-          <Plus size={14} /> Nuovo Piano di Cura
-        </button>
+        {canCreateQuote && (
+          <button className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-ink bg-surface-muted border border-line hover:bg-line transition-colors whitespace-nowrap">
+            <Plus size={14} /> Nuovo Piano di Cura
+          </button>
+        )}
 
         {/* AI Agent Status Pill - compact on mobile */}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
@@ -68,17 +75,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
 
         {/* Notification Bell */}
-        <button className="relative p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Notifiche">
+        <button className="relative p-2 rounded-xl text-ink hover:bg-surface-muted transition-colors" aria-label="Notifiche">
           <Bell size={17} />
         </button>
 
         {/* Utente & studio */}
         <div className="hidden md:flex flex-col items-end leading-tight min-w-0 max-w-[180px]">
-          <span className="text-xs font-semibold text-slate-900 truncate max-w-full" title={studioName}>{studioName}</span>
-          <span className="text-[10px] text-slate-500 truncate max-w-full" title={email ?? undefined}>{email ?? ""}</span>
+          <span className="text-xs font-semibold text-ink truncate max-w-full" title={studioName}>{studioName}</span>
+          <span className="text-[10px] text-ink-muted truncate max-w-full" title={email ?? undefined}>{email ?? ""}</span>
         </div>
         <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white bg-blue-600 flex-shrink-0"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-accent-ink bg-accent flex-shrink-0"
           title={email ?? undefined}
         >
           {initialsOf(email)}
@@ -86,7 +93,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
         <button
           onClick={signOut}
-          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-semibold text-ink-muted hover:bg-surface-muted transition-colors"
         >
           <LogOut size={13} /> <span className="hidden sm:inline">Esci</span>
         </button>

@@ -23,7 +23,7 @@ export default function KpiCards({ data }: KpiCardsProps) {
       {data.map(({ label, value, sub, up, icon: Icon, accent, spark }) => (
         <div
           key={label}
-          className="bg-white rounded-2xl p-5 flex flex-col border border-slate-200"
+          className="bg-surface rounded-2xl p-5 flex flex-col border border-line"
         >
           {/* Top Row: Icon & Trend */}
           <div className="flex items-start justify-between mb-3">
@@ -39,7 +39,7 @@ export default function KpiCards({ data }: KpiCardsProps) {
             {/* Trend Indicator (Green if Up, Red if Down) */}
             <div
               className={`flex items-center gap-1 text-[11px] font-semibold
-                ${up ? "text-emerald-500" : "text-rose-500"}`}
+                ${up ? "text-emerald-700" : "text-red-700"}`}
             >
               {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
               {sub}
@@ -47,10 +47,10 @@ export default function KpiCards({ data }: KpiCardsProps) {
           </div>
 
           {/* Value & Label */}
-          <p className="text-3xl font-bold leading-none mb-1 text-slate-900">
+          <p className="text-3xl font-bold leading-none mb-1 text-ink">
             {value}
           </p>
-          <p className="text-xs mb-3 text-slate-500">
+          <p className="text-xs mb-3 text-ink-muted">
             {label}
           </p>
 

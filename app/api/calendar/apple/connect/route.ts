@@ -1,13 +1,13 @@
 import { apiOk, handleApiError } from "@/lib/api";
 import { connectApple, disconnectProvider } from "@/lib/calendar-sync";
-import { requireCompany } from "@/lib/db";
+import { requirePermission } from "@/lib/db";
 import { parseAppleConnectInput, readJsonObject } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { companyId } = await requireCompany();
+    const { companyId } = await requirePermission("settings:manage");
     const input = parseAppleConnectInput(await readJsonObject(request));
     return apiOk(await connectApple(companyId, input));
   } catch (err) {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    const { companyId } = await requireCompany();
+    const { companyId } = await requirePermission("settings:manage");
     await disconnectProvider(companyId, "apple");
     return apiOk(null);
   } catch (err) {

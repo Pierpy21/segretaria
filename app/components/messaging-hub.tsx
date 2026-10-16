@@ -17,14 +17,14 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
     : chats;
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
+    <div className="bg-surface rounded-2xl overflow-hidden flex flex-col border border-line">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-line">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Centro Messaggi Pazienti</h2>
-          <p className="text-xs text-slate-500">WhatsApp Studio & Triage AI</p>
+          <h2 className="text-sm font-semibold text-ink">Centro Messaggi Pazienti</h2>
+          <p className="text-xs text-ink-muted">WhatsApp Studio & Triage AI</p>
         </div>
-        <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
+        <button className="text-xs font-semibold text-accent-text hover:text-ink transition-colors">
           Vedi tutti →
         </button>
       </div>
@@ -36,14 +36,14 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
             key={tab}
             onClick={() => setChatTab(tab)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center
-              ${chatTab === tab 
-                ? "bg-blue-600 text-white" 
-                : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"
+              ${chatTab === tab
+                ? "bg-accent text-accent-ink"
+                : "bg-surface-muted text-ink-muted border border-line hover:bg-line"
               }`}
           >
             {tab}
             {tab === "Non lette" && chatTab !== "Non lette" && (
-              <span className="ml-1.5 inline-block w-4 h-4 rounded-full text-white text-[9px] font-bold leading-4 text-center bg-blue-500">
+              <span className="ml-1.5 inline-block w-4 h-4 rounded-full text-accent-ink text-[9px] font-bold leading-4 text-center bg-accent">
                 {chats.filter(c => c.unread > 0).length}
               </span>
             )}
@@ -53,11 +53,11 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
 
 
       {/* Chat List */}
-      <div className="flex-1 divide-y divide-slate-50">
+      <div className="flex-1 divide-y divide-line">
         {filteredChats.map(chat => (
           <div
             key={chat.id}
-            className="flex items-center gap-3 px-5 py-3 cursor-pointer transition-colors hover:bg-slate-50"
+            className="flex items-center gap-3 px-5 py-3 cursor-pointer transition-colors hover:bg-surface-muted"
           >
             {/* Avatar dinamico con variabile CSS per il colore di sfondo */}
             <div
@@ -66,23 +66,23 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
             >
               {chat.initials}
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-0.5">
-                <span className="text-sm font-semibold text-slate-900">{chat.name}</span>
+                <span className="text-sm font-semibold text-ink">{chat.name}</span>
                 {chat.ai && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/10 text-accent-text">
                     <Bot size={8} /> AI
                   </span>
                 )}
               </div>
-              <p className="text-xs truncate text-slate-400">{chat.snippet}</p>
+              <p className="text-xs truncate text-ink-muted">{chat.snippet}</p>
             </div>
 
             <div className="flex flex-col items-end gap-1.5">
-              <span className="text-[11px] text-slate-400">{chat.time}</span>
+              <span className="text-[11px] text-ink-muted">{chat.time}</span>
               {chat.unread > 0 && (
-                <span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center bg-blue-600">
+                <span className="w-5 h-5 rounded-full text-accent-ink text-[10px] font-bold flex items-center justify-center bg-accent">
                   {chat.unread}
                 </span>
               )}

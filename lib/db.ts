@@ -6,6 +6,15 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { companies, companyMembers } from "@/drizzle/schema";
 import * as schema from "@/drizzle/schema";
 import type { CompanyRole, MeResponse } from "@/app/types/api";
+import {
+  ROLE_PERMISSIONS,
+  homePathFor,
+  hasPermission,
+  profileOf,
+  type AccessProfile,
+  type Permission,
+} from "@/lib/auth/permissions";
+import { ForbiddenError } from "@/lib/errors";
 
 export { schema };
 export type { Tx };
@@ -110,11 +119,15 @@ export async function withCompany<T>(
 export const getMe = cache(async (): Promise<MeResponse> => {
   const user = await getVerifiedUser();
   const m = await withUser((tx) => selectMembership(tx, user.id));
+  const role = m ? (m.role as CompanyRole) : null;
   return {
     user,
     company: m
       ? { id: m.companyId, name: m.name, slug: m.slug, role: m.role as CompanyRole }
       : null,
+    role,
+    profile: role ? profileOf(role) : null,
+    permissions: role ? [...ROLE_PERMISSIONS[role]] : [],
   };
 });
 
@@ -128,4 +141,51 @@ export const requireCompany = cache(async (): Promise<CompanyContext> => {
   const m = await withUser((tx) => selectMembership(tx, user.id));
   if (!m) throw new NoCompanyError();
   return { user, companyId: m.companyId, role: m.role as CompanyRole };
+});
+
+/**
+ * Come withCompany, ma la callback viene eseguita solo se il ruolo ha il permesso.
+ * Uso dichiarativo nelle route: withPermission("quotes:write", (tx, { companyId }) => ...).
+ * Lancia ForbiddenError (403 FORBIDDEN) prima di qualunque query dati.
+ */
+export function withPermission<T>(
+  permission: Permission,
+  cb: (tx: Tx, ctx: CompanyTxContext) => Promise<T>
+): Promise<T> {
+  return withCompany((tx, ctx) => {
+    if (!hasPermission(ctx.role, permission)) throw new ForbiddenError();
+    return cb(tx, ctx);
+  });
+}
+
+/** Come requireCompany, con controllo del permesso (per route senza query dati, es. OAuth/provider). */
+export async function requirePermission(permission: Permission): Promise<CompanyContext> {
+  const ctx = await requireCompany();
+  if (!hasPermission(ctx.role, permission)) throw new ForbiddenError();
+  return ctx;
+}
+
+export interface Membership extends CompanyContext {
+  profile: AccessProfile;
+  permissions: Permission[];
+  /** Pagina iniziale del ruolo ("/" oppure "/contabile") */
+  homePath: string;
+}
+
+/**
+ * Helper per Server Components / layout (redirect per ruolo).
+ * Lancia UnauthorizedError se non loggato (→ /login). Ritorna null se l'utente non ha
+ * uno studio (→ /onboarding). Riusa getMe (deduplicato per richiesta).
+ */
+export const getCurrentMembership = cache(async (): Promise<Membership | null> => {
+  const me = await getMe();
+  if (!me.company || !me.role) return null;
+  return {
+    user: me.user,
+    companyId: me.company.id,
+    role: me.role,
+    profile: profileOf(me.role),
+    permissions: me.permissions,
+    homePath: homePathFor(me.role),
+  };
 });

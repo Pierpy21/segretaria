@@ -117,15 +117,15 @@ export default function MaintenancePage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="bg-surface rounded-2xl border border-line p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Attività Cliniche & Studio</h2>
-            <p className="text-xs text-slate-500">Kanban operativo: sterilizzazione, laboratorio odontotecnico, recall e forniture</p>
+            <h2 className="text-sm font-semibold text-ink">Attività Cliniche & Studio</h2>
+            <p className="text-xs text-ink-muted">Kanban operativo: sterilizzazione, laboratorio odontotecnico, recall e forniture</p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover transition-colors"
           >
             <Plus size={13} /> Aggiungi Attività
           </button>
@@ -134,16 +134,16 @@ export default function MaintenancePage() {
         {/* Stats */}
         <div className="flex gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Totale</p>
-            <p className="text-lg font-bold text-slate-900">{allTasksCount}</p>
+            <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Totale</p>
+            <p className="text-lg font-bold text-ink">{allTasksCount}</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Task AI</p>
-            <p className="text-lg font-bold text-emerald-600">{aiTasksCount}</p>
+            <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Task AI</p>
+            <p className="text-lg font-bold text-emerald-700">{aiTasksCount}</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Personale Studio</p>
-            <p className="text-lg font-bold text-slate-900">{humanTasksCount}</p>
+            <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Personale Studio</p>
+            <p className="text-lg font-bold text-ink">{humanTasksCount}</p>
           </div>
         </div>
       </div>
@@ -158,8 +158,8 @@ export default function MaintenancePage() {
             onClick={() => setFilterSource(f)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
               ${filterSource === f
-                ? "bg-blue-600 text-white"
-                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                ? "bg-accent text-accent-ink"
+                : "bg-surface border border-line text-ink-muted hover:bg-surface-muted"
               }`}
           >
             <Filter size={12} />
@@ -197,15 +197,15 @@ export default function MaintenancePage() {
                   if (task) void moveTask(task, meta.id);
                 }}
                 className={`rounded-2xl border-2 flex flex-col overflow-hidden transition-colors ${
-                  draggedTaskId ? "border-blue-300" : "border-slate-200"
+                  draggedTaskId ? "border-accent-soft" : "border-line"
                 }`}
                 style={{ backgroundColor: meta.bg }}
               >
                 {/* Column header */}
-                <div className="px-4 py-3 border-b border-slate-200 bg-white">
+                <div className="px-4 py-3 border-b border-line bg-surface">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.accent }} />
-                    <span className="text-xs font-bold text-slate-700">{meta.name}</span>
+                    <span className="text-xs font-bold text-ink">{meta.name}</span>
                     <span
                       className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
                       style={{ backgroundColor: `${meta.accent}20`, color: meta.accent }}
@@ -218,7 +218,7 @@ export default function MaintenancePage() {
                 {/* Tasks */}
                 <div className="flex-1 p-3 space-y-2 overflow-y-auto max-h-[520px]">
                   {filtered.length === 0 ? (
-                    <p className="text-[10px] text-slate-400 italic py-2">Nessun task.</p>
+                    <p className="text-[10px] text-ink-muted italic py-2">Nessun task.</p>
                   ) : (
                     filtered.map(task => (
                       <div
@@ -227,12 +227,12 @@ export default function MaintenancePage() {
                         onDragStart={() => setDraggedTaskId(task.id)}
                         onDragEnd={() => setDraggedTaskId(null)}
                         onClick={() => setSelectedTaskId(task.id)}
-                        className={`w-full bg-white rounded-xl p-3 border text-left cursor-grab active:cursor-grabbing transition-all
-                          ${draggedTaskId === task.id ? "opacity-50 border-blue-400" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"}`}
+                        className={`w-full bg-surface rounded-xl p-3 border text-left cursor-grab active:cursor-grabbing transition-all
+                          ${draggedTaskId === task.id ? "opacity-50 border-accent-soft" : "border-line hover:border-line-strong hover:shadow-sm"}`}
                       >
                         <div className="flex items-start gap-2 mb-2">
-                          <GripVertical size={12} className="mt-0.5 text-slate-400 flex-shrink-0" />
-                          <p className="text-[11px] font-medium text-slate-900 flex-1 leading-tight">{task.title}</p>
+                          <GripVertical size={12} className="mt-0.5 text-ink-muted flex-shrink-0" />
+                          <p className="text-[11px] font-medium text-ink flex-1 leading-tight">{task.title}</p>
                         </div>
                         <div className="flex items-center justify-between ml-5">
                           <span
@@ -241,15 +241,15 @@ export default function MaintenancePage() {
                           >
                             {task.priority}
                           </span>
-                          <span className="flex items-center gap-1 text-[9px] text-slate-500">
+                          <span className="flex items-center gap-1 text-[9px] text-ink-muted">
                             {task.ai ? (
                               <>
-                                <Bot size={10} className="text-emerald-600" />
-                                <span className="text-emerald-600 font-semibold">AI</span>
+                                <Bot size={10} className="text-emerald-700" />
+                                <span className="text-emerald-700 font-semibold">AI</span>
                               </>
                             ) : (
                               <>
-                                <User size={10} className="text-slate-500" />
+                                <User size={10} className="text-ink-muted" />
                                 <span>Human</span>
                               </>
                             )}
@@ -267,31 +267,31 @@ export default function MaintenancePage() {
 
       {/* Task detail panel */}
       {selectedTask && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="bg-surface rounded-2xl border border-line p-5">
           <div className="flex items-start justify-between mb-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-sm font-semibold text-slate-900">{selectedTask.title}</h3>
+                <h3 className="text-sm font-semibold text-ink">{selectedTask.title}</h3>
                 {selectedTask.ai && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800">
                     <Bot size={8} /> AI Generated
                   </span>
                 )}
               </div>
             </div>
-            <button onClick={() => setSelectedTaskId(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Chiudi dettaglio">
+            <button onClick={() => setSelectedTaskId(null)} className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted" aria-label="Chiudi dettaglio">
               <X size={14} />
             </button>
           </div>
 
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Descrizione</p>
-              <p className="text-xs text-slate-600">{selectedTask.description || "Nessuna descrizione fornita."}</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Descrizione</p>
+              <p className="text-xs text-ink-muted">{selectedTask.description || "Nessuna descrizione fornita."}</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Priorità</p>
+                <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Priorità</p>
                 <span
                   className="inline-flex text-xs font-bold px-2 py-1 rounded-lg"
                   style={{ backgroundColor: `${PRIORITY_COLOR[selectedTask.priority]}18`, color: PRIORITY_COLOR[selectedTask.priority] }}
@@ -300,18 +300,18 @@ export default function MaintenancePage() {
                 </span>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Origine</p>
-                <p className="text-xs font-semibold text-slate-700">{selectedTask.ai ? "AI" : "Manuale"}</p>
+                <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Origine</p>
+                <p className="text-xs font-semibold text-ink">{selectedTask.ai ? "AI" : "Manuale"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Assegnato a</p>
-                <p className="text-xs font-semibold text-slate-700">{selectedTask.assignedTo ?? "—"}</p>
+                <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Assegnato a</p>
+                <p className="text-xs font-semibold text-ink">{selectedTask.assignedTo ?? "—"}</p>
               </div>
             </div>
 
             {/* Move task buttons */}
             <div>
-              <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Sposta in</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-2">Sposta in</p>
               <div className="grid grid-cols-3 gap-2">
                 {BOARD_COLUMNS.map(col => (
                   <button
@@ -320,8 +320,8 @@ export default function MaintenancePage() {
                     disabled={col.id === selectedTask.columnId}
                     className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors
                       ${col.id === selectedTask.columnId
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        ? "bg-surface-muted text-ink-muted cursor-not-allowed"
+                        : "bg-surface border border-line text-ink-muted hover:bg-surface-muted"
                       }`}
                   >
                     {col.name}
@@ -333,7 +333,7 @@ export default function MaintenancePage() {
             {/* Delete button */}
             <button
               onClick={() => void deleteTask(selectedTask)}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-800 bg-red-50 border border-red-200 hover:bg-red-100"
             >
               <Trash2 size={12} /> Elimina Attività
             </button>
@@ -343,14 +343,14 @@ export default function MaintenancePage() {
 
       {/* New task modal */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <form onSubmit={submitNewTask} className="bg-white rounded-2xl border border-slate-200 w-full max-w-sm p-5">
+        <div className="fixed inset-0 z-50 bg-sidebar/40 flex items-center justify-center p-4">
+          <form onSubmit={submitNewTask} className="bg-surface rounded-2xl border border-line w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-slate-900">Nuova Attività Studio</p>
+              <p className="text-sm font-semibold text-ink">Nuova Attività Studio</p>
               <button
                 type="button"
                 onClick={() => setShowNewModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
+                className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted"
                 aria-label="Chiudi"
               >
                 <X size={15} />
@@ -361,20 +361,20 @@ export default function MaintenancePage() {
                 value={form.title}
                 onChange={e => setForm({ ...form, title: e.target.value })}
                 placeholder="Titolo attività (es. Test spore autoclave, Ordine compositi)"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
+                className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
               />
               <textarea
                 value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
                 placeholder="Descrizione e dettagli operativi (opzionale)"
                 rows={3}
-                className="w-full rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 resize-none"
+                className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent resize-none"
               />
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={form.priority}
                   onChange={e => setForm({ ...form, priority: e.target.value as TaskPriority })}
-                  className="rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
+                  className="rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
                 >
                   <option value="high">Priorità Alta</option>
                   <option value="medium">Priorità Media</option>
@@ -384,23 +384,23 @@ export default function MaintenancePage() {
                   value={form.assignedTo}
                   onChange={e => setForm({ ...form, assignedTo: e.target.value })}
                   placeholder="Assegnato a"
-                  className="rounded-xl px-3 py-2 text-sm bg-slate-50 border border-slate-200 outline-none focus:border-blue-500"
+                  className="rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
                 />
               </div>
             </div>
-            {formError && <p className="mt-3 text-xs font-semibold text-red-600">{formError}</p>}
+            {formError && <p className="mt-3 text-xs font-semibold text-red-800">{formError}</p>}
             <div className="flex items-center justify-end gap-2 mt-4">
               <button
                 type="button"
                 onClick={() => setShowNewModal(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-ink-muted bg-surface border border-line hover:bg-surface-muted"
               >
                 Annulla
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover disabled:opacity-60"
               >
                 {submitting && <LoaderCircle size={12} className="animate-spin" />}
                 Salva Attività

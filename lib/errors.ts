@@ -16,6 +16,14 @@ export class ConflictError extends Error {
   }
 }
 
+/** Ruolo senza il permesso richiesto → HTTP 403 FORBIDDEN. */
+export class ForbiddenError extends Error {
+  constructor(message = "Operazione non consentita per il tuo ruolo") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
 /** Risorsa non trovata nello studio corrente → HTTP 404. */
 export class NotFoundError extends Error {
   constructor(message = "Risorsa non trovata") {

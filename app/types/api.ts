@@ -2,6 +2,7 @@
 // Tutte le route rispondono con ApiResult<T>. Errori comuni:
 //   401 { success:false, error:"UNAUTHORIZED" }  → utente non loggato (redirect a /login)
 //   409 { success:false, error:"NO_COMPANY" }    → utente senza studio (redirect a /onboarding)
+//   403 { success:false, error:"FORBIDDEN" }     → ruolo senza il permesso richiesto
 // Tutti gli id delle entità sono UUID string.
 
 import type { CalendarEventData, EventSource, ReminderData, ReminderPriority, ReminderStatus } from "./calendar";
@@ -9,20 +10,30 @@ import type { Task, ColumnId, TaskPriority } from "./maintenance";
 import type { ChatListItem, Message, MessageFrom } from "./messaging";
 import type { Quote, QuoteStatus } from "./quotes";
 import type { Patient } from "./patients";
+import type { AccessProfile, Permission } from "@/lib/auth/permissions";
 
 export type { ApiResult } from "./calendar-sync";
 
-export const API_ERROR = { UNAUTHORIZED: "UNAUTHORIZED", NO_COMPANY: "NO_COMPANY" } as const;
+export const API_ERROR = {
+  UNAUTHORIZED: "UNAUTHORIZED",
+  NO_COMPANY: "NO_COMPANY",
+  FORBIDDEN: "FORBIDDEN",
+} as const;
 
 // ─── Sessione & onboarding ──────────────────────────────────────────────────
 // GET  /api/me                → MeResponse
 // POST /api/onboarding        body OnboardingInput → MeResponse["company"]
 // Login/registrazione: client Supabase lato browser (lib/supabase/client.ts),
 // conferma email su GET /auth/callback?code=... → redirect "/".
-export type CompanyRole = "owner" | "admin" | "member";
+// owner/admin = dottore (accesso completo); member = staff; accountant = assistente contabile.
+export type CompanyRole = "owner" | "admin" | "member" | "accountant";
 export interface MeResponse {
   user: { id: string; email: string | null };
   company: { id: string; name: string; slug: string; role: CompanyRole } | null;
+  /** Ruolo nello studio corrente (null se nessuno studio) */
+  role: CompanyRole | null;
+  profile: AccessProfile | null;
+  permissions: Permission[];
 }
 export interface OnboardingInput {
   name: string;
@@ -98,6 +109,9 @@ export interface CreateQuoteInput {
 // POST  /api/patients body CreatePatientInput → Patient
 // PATCH /api/patients/[id] body Partial<CreatePatientInput> → Patient
 export type CreatePatientInput = Omit<Patient, "id" | "age" | "initials">;
+/** Campi clinici: presenti in risposta solo con clinical:read (assenti, non null, altrimenti). */
+export type ClinicalPatientKey = "recommendation" | "previousVisit" | "selectedTooth" | "xrayFindings" | "treatments";
+export type PatientResponse = Omit<Patient, ClinicalPatientKey> & Partial<Pick<Patient, ClinicalPatientKey>>;
 
 // ─── Badge sidebar (contatori reali) ────────────────────────────────────────
 // GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.

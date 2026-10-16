@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { connectGoogle } from "@/lib/calendar-sync";
-import { NoCompanyError, UnauthorizedError, requireCompany } from "@/lib/db";
+import { NoCompanyError, UnauthorizedError, requirePermission } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ function backToCalendar(request: NextRequest, result: "google-ok" | "google-erro
 export async function GET(request: NextRequest) {
   let companyId: string;
   try {
-    ({ companyId } = await requireCompany());
+    ({ companyId } = await requirePermission("settings:manage"));
   } catch (err) {
     if (err instanceof UnauthorizedError) return NextResponse.redirect(new URL("/login", request.url), 302);
     if (err instanceof NoCompanyError) return NextResponse.redirect(new URL("/onboarding", request.url), 302);

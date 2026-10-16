@@ -3,16 +3,24 @@ import { randomInt } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
 import { patients, type NewPatientRow, type PatientRow } from "@/drizzle/schema";
-import type { Patient } from "@/app/types/patients";
-import type { CreatePatientInput } from "@/app/types/api";
+import type { CreatePatientInput, ClinicalPatientKey, PatientResponse } from "@/app/types/api";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { ageFrom, formatItalianLong, initialsOf, parseDateInput } from "./format";
 
 const MAX_CODE_ATTEMPTS = 5;
 
-function toPatient(row: PatientRow, now: Date, tz: string): Patient {
-  return {
+const CLINICAL_KEYS: readonly ClinicalPatientKey[] = [
+  "recommendation",
+  "previousVisit",
+  "selectedTooth",
+  "xrayFindings",
+  "treatments",
+];
+
+/** `clinical` = il ruolo ha clinical:read: solo allora i campi clinici sono inclusi. */
+function toPatient(row: PatientRow, now: Date, tz: string, clinical: boolean): PatientResponse {
+  const view: PatientResponse = {
     id: row.code,
     name: row.name,
     gender: row.gender,
@@ -24,13 +32,16 @@ function toPatient(row: PatientRow, now: Date, tz: string): Patient {
     email: row.email,
     address: row.address,
     fiscalCode: row.fiscalCode,
-    recommendation: row.recommendation,
     insurance: row.insurance,
-    previousVisit: row.previousVisit,
-    selectedTooth: row.selectedTooth,
-    xrayFindings: row.xrayFindings,
-    treatments: row.treatments,
   };
+  if (clinical) {
+    view.recommendation = row.recommendation;
+    view.previousVisit = row.previousVisit;
+    view.selectedTooth = row.selectedTooth;
+    view.xrayFindings = row.xrayFindings;
+    view.treatments = row.treatments;
+  }
+  return view;
 }
 
 function parseBirthDate(input: string): string {
@@ -51,7 +62,7 @@ function newPatientCode(now: Date): string {
   return `PT-${now.getFullYear()}-${seq}`;
 }
 
-export async function listPatients(tx: Tx, companyId: string): Promise<Patient[]> {
+export async function listPatients(tx: Tx, companyId: string, clinical: boolean): Promise<PatientResponse[]> {
   const now = new Date();
   const tz = getCalendarTimeZone();
   const rows = await tx
@@ -59,11 +70,16 @@ export async function listPatients(tx: Tx, companyId: string): Promise<Patient[]
     .from(patients)
     .where(eq(patients.companyId, companyId))
     .orderBy(asc(patients.name));
-  return rows.map((row) => toPatient(row, now, tz));
+  return rows.map((row) => toPatient(row, now, tz, clinical));
 }
 
 /** `code` è l'id applicativo del paziente (es. "PT-2026-0142"). */
-export async function getPatient(tx: Tx, companyId: string, code: string): Promise<Patient | null> {
+export async function getPatient(
+  tx: Tx,
+  companyId: string,
+  code: string,
+  clinical: boolean,
+): Promise<PatientResponse | null> {
   const now = new Date();
   const tz = getCalendarTimeZone();
   const rows = await tx
@@ -72,14 +88,21 @@ export async function getPatient(tx: Tx, companyId: string, code: string): Promi
     .where(and(eq(patients.companyId, companyId), eq(patients.code, code)))
     .limit(1);
   const row = rows[0];
-  return row ? toPatient(row, now, tz) : null;
+  return row ? toPatient(row, now, tz, clinical) : null;
 }
 
 /**
  * Il retry sul codice casuale usa ON CONFLICT DO NOTHING (non un errore 23505):
  * un errore abortirebbe la transazione, il DO NOTHING no. Stessa tx, nessun round-trip extra.
  */
-export async function createPatient(tx: Tx, companyId: string, input: CreatePatientInput): Promise<Patient> {
+export async function createPatient(
+  tx: Tx,
+  companyId: string,
+  input: CreatePatientInput,
+  clinical: boolean,
+): Promise<PatientResponse> {
+  // Creare un paziente comporta sempre dati clinici (anche vuoti): richiede clinical:read.
+  if (!clinical) throw new ForbiddenError("Creazione paziente non consentita per il tuo ruolo");
   const now = new Date();
   const tz = getCalendarTimeZone();
   const values = {
@@ -107,7 +130,7 @@ export async function createPatient(tx: Tx, companyId: string, input: CreatePati
       .onConflictDoNothing()
       .returning();
     const row = inserted[0];
-    if (row) return toPatient(row, now, tz);
+    if (row) return toPatient(row, now, tz, clinical);
   }
   throw new ConflictError("Impossibile generare un codice paziente univoco, riprova");
 }
@@ -117,7 +140,11 @@ export async function updatePatient(
   companyId: string,
   code: string,
   patch: Partial<CreatePatientInput>,
-): Promise<Patient> {
+  clinical: boolean,
+): Promise<PatientResponse> {
+  if (!clinical && CLINICAL_KEYS.some((k) => patch[k] !== undefined)) {
+    throw new ForbiddenError("Modifica dei dati clinici non consentita per il tuo ruolo");
+  }
   const now = new Date();
   const tz = getCalendarTimeZone();
 
@@ -144,5 +171,5 @@ export async function updatePatient(
     .returning();
   const row = updated[0];
   if (!row) throw new NotFoundError("Paziente non trovato");
-  return toPatient(row, now, tz);
+  return toPatient(row, now, tz, clinical);
 }

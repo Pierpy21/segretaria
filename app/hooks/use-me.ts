@@ -4,9 +4,10 @@ import { useApiData } from "@/app/hooks/use-api-data";
 import type { CompanyRole, MeResponse } from "@/app/types/api";
 
 const ROLE_LABEL: Record<CompanyRole, string> = {
-  owner: "Titolare",
-  admin: "Amministratore",
+  owner: "Dottore",
+  admin: "Admin",
   member: "Collaboratore",
+  accountant: "Assistente contabile",
 };
 
 /** Dati della sessione corrente (GET /api/me), condivisi tra header e sidebar. */

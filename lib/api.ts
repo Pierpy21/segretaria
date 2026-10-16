@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { API_ERROR, type ApiResult } from "@/app/types/api";
 import { CalendarSyncError } from "@/lib/calendar-sync/errors";
 import { NoCompanyError, UnauthorizedError } from "@/lib/db";
-import { ConflictError, NotFoundError, ValidationError, pgErrorCode } from "@/lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, pgErrorCode } from "@/lib/errors";
 
 /** Risposta di successo: { success: true, data } */
 export function apiOk<T>(data: T, status = 200): NextResponse<ApiResult<T>> {
@@ -22,6 +22,7 @@ export function apiFail(error: string, status = 400): NextResponse<ApiResult<nev
 export function handleApiError(err: unknown): NextResponse<ApiResult<never>> {
   if (err instanceof UnauthorizedError) return apiFail(API_ERROR.UNAUTHORIZED, 401);
   if (err instanceof NoCompanyError) return apiFail(API_ERROR.NO_COMPANY, 409);
+  if (err instanceof ForbiddenError) return apiFail(API_ERROR.FORBIDDEN, 403);
   if (err instanceof ValidationError) return apiFail(err.message, 400);
   if (err instanceof NotFoundError) return apiFail(err.message, 404);
   if (err instanceof ConflictError) return apiFail(err.message, 409);

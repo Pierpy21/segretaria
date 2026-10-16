@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { apiOk, handleApiError } from "@/lib/api";
 import { disconnectProvider, googleAuthUrl } from "@/lib/calendar-sync";
-import { NoCompanyError, UnauthorizedError, requireCompany } from "@/lib/db";
+import { NoCompanyError, UnauthorizedError, requirePermission } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ const STATE_TTL_SECONDS = 600;
 /** Navigazione OAuth: nessun JSON, solo redirect. */
 export async function GET(request: Request) {
   try {
-    await requireCompany();
+    await requirePermission("settings:manage");
   } catch (err) {
     if (err instanceof UnauthorizedError) return NextResponse.redirect(new URL("/login", request.url), 302);
     if (err instanceof NoCompanyError) return NextResponse.redirect(new URL("/onboarding", request.url), 302);
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
 
 export async function DELETE() {
   try {
-    const { companyId } = await requireCompany();
+    const { companyId } = await requirePermission("settings:manage");
     await disconnectProvider(companyId, "google");
     return apiOk(null);
   } catch (err) {
