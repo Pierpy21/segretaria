@@ -4,13 +4,15 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { apiFetch } from "@/app/lib/api-client";
-import type { MeResponse, OnboardingInput } from "@/app/types/api";
+import type { MeResponse, OnboardingInput, Sector } from "@/app/types/api";
 import { Skeleton } from "@/app/components/ui/async-state";
+import { SECTOR_OPTIONS } from "@/app/constants/sectors";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [name, setName] = useState("");
+  const [sector, setSector] = useState<Sector>("generico");
   const [seedDemo, setSeedDemo] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export default function OnboardingPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const body: OnboardingInput = { name: studioName, seedDemo };
+      const body: OnboardingInput = { name: studioName, seedDemo, sector };
       await apiFetch("/api/onboarding", { method: "POST", body: JSON.stringify(body) });
       router.replace("/");
       router.refresh();
@@ -88,6 +90,22 @@ export default function OnboardingPage() {
                 />
               </div>
 
+              <div>
+                <label htmlFor="studio-sector" className="block text-xs font-bold text-ink mb-1">
+                  Settore
+                </label>
+                <select
+                  id="studio-sector"
+                  value={sector}
+                  onChange={e => setSector(e.target.value as Sector)}
+                  className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                >
+                  {SECTOR_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <label className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-line cursor-pointer hover:bg-surface-muted">
                 <input
                   type="checkbox"
@@ -97,7 +115,7 @@ export default function OnboardingPage() {
                 />
                 <span>
                   <span className="block text-xs font-semibold text-ink">Carica dati demo</span>
-                  <span className="block text-[11px] text-ink-muted">Pazienti, appuntamenti, chat e preventivi di esempio.</span>
+                  <span className="block text-[11px] text-ink-muted">Clienti, appuntamenti, chat e preventivi di esempio.</span>
                 </span>
               </label>
 

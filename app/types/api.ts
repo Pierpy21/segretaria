@@ -9,7 +9,7 @@ import type { CalendarEventData, EventSource, ReminderData, ReminderPriority, Re
 import type { Task, ColumnId, TaskPriority } from "./maintenance";
 import type { ChatListItem, Message, MessageFrom } from "./messaging";
 import type { Quote, QuoteStatus } from "./quotes";
-import type { Patient } from "./patients";
+import type { Client, ClientAttributeValue, ClientAttributes, ClientFieldDefinition, ClientFieldType, Sector } from "./clients";
 import type { AccessProfile, Permission } from "@/lib/auth/permissions";
 
 export type { ApiResult } from "./calendar-sync";
@@ -29,7 +29,7 @@ export const API_ERROR = {
 export type CompanyRole = "owner" | "admin" | "member" | "accountant";
 export interface MeResponse {
   user: { id: string; email: string | null };
-  company: { id: string; name: string; slug: string; role: CompanyRole } | null;
+  company: { id: string; name: string; slug: string; sector: Sector; role: CompanyRole } | null;
   /** Ruolo nello studio corrente (null se nessuno studio) */
   role: CompanyRole | null;
   profile: AccessProfile | null;
@@ -39,6 +39,8 @@ export interface OnboardingInput {
   name: string;
   /** Popola lo studio con i dati demo (app/data/*) */
   seedDemo: boolean;
+  /** Settore: sceglie i campi personalizzati di default (default "generico") */
+  sector: Sector;
 }
 
 // ─── Agenda (eventi salvati su DB; quelli Google/Apple sono importati via sync) ──
@@ -103,20 +105,22 @@ export interface CreateQuoteInput {
   client: string; type: string; amount: number; description?: string; date?: string;
 }
 
-// ─── Pazienti ───────────────────────────────────────────────────────────────
-// GET   /api/patients → Patient[]
-// GET   /api/patients/[id] → Patient
-// POST  /api/patients body CreatePatientInput → Patient
-// PATCH /api/patients/[id] body Partial<CreatePatientInput> → Patient
-export type CreatePatientInput = Omit<Patient, "id" | "age" | "initials">;
+// ─── Clienti ────────────────────────────────────────────────────────────────
+// GET   /api/clients → ClientResponse[]
+// GET   /api/clients/[id] → ClientResponse
+// POST  /api/clients body CreateClientInput → ClientResponse
+// PATCH /api/clients/[id] body Partial<CreateClientInput> → ClientResponse
+// GET   /api/clients/fields?type=dentale → ClientFieldDefinition[] (ordinati per position)
+export type CreateClientInput = Omit<Client, "id" | "age" | "initials">;
 /** Campi clinici: presenti in risposta solo con clinical:read (assenti, non null, altrimenti). */
-export type ClinicalPatientKey = "recommendation" | "previousVisit" | "selectedTooth" | "xrayFindings" | "treatments";
-export type PatientResponse = Omit<Patient, ClinicalPatientKey> & Partial<Pick<Patient, ClinicalPatientKey>>;
+export type ClinicalClientKey = "recommendation" | "previousVisit" | "selectedTooth" | "xrayFindings" | "treatments";
+export type ClientResponse = Omit<Client, ClinicalClientKey> & Partial<Pick<Client, ClinicalClientKey>>;
+export type { Sector, ClientFieldDefinition, ClientFieldType, ClientAttributeValue, ClientAttributes };
 
 // ─── Badge sidebar (contatori reali) ────────────────────────────────────────
 // GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.
 export interface SidebarBadges {
-  /** Pazienti creati negli ultimi 7 giorni */
+  /** Clienti creati negli ultimi 7 giorni (chiave `patients` mantenuta: contratto con la sidebar) */
   patients: number;
   /** Somma dei messaggi non letti di tutte le conversazioni */
   chat: number;

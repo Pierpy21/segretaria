@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Contatore a 0 se il ruolo non ha il permesso della sezione collegata. */
 const BADGE_PERMISSION: Record<keyof SidebarBadges, Permission> = {
-  patients: "patients:read",
+  patients: "clients:read",
   chat: "chat:read",
   calendar: "calendar:read",
   tasks: "tasks:read",

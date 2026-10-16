@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import type {
   AppleConnectInput,
   CreateCalendarEventInput,
+  CreateClientInput,
   CreateMessageInput,
-  CreatePatientInput,
   CreateQuoteInput,
   CreateReminderInput,
   CreateTaskInput,
@@ -17,12 +17,15 @@ import type { EventSource, ReminderPriority, ReminderStatus } from "@/app/types/
 import type { ColumnId, TaskPriority } from "@/app/types/maintenance";
 import type { MessageFrom } from "@/app/types/messaging";
 import type {
+  ClientAttributes,
+  ClientFieldDefinition,
   InsuranceCardData,
   PreviousVisitNote,
   SelectedToothData,
+  Sector,
   TreatmentHistoryItem,
   XRayFinding,
-} from "@/app/types/patients";
+} from "@/app/types/clients";
 import type { QuoteStatus } from "@/app/types/quotes";
 import { parseToUtcMs } from "@/lib/calendar-sync/time";
 import { parseDateInput } from "@/lib/data/format";
@@ -36,7 +39,7 @@ export const MAX_RANGE_DAYS = 400;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PATIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
+const CLIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ─── Enum del contratto (app/types/*) ───────────────────────────────────────
@@ -50,6 +53,7 @@ export const MESSAGE_FROM = ["contact", "user", "ai-draft"] as const satisfies r
 export const CLIENT_MESSAGE_FROM = ["user", "ai-draft"] as const satisfies readonly MessageFrom[];
 export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined"] as const satisfies readonly QuoteStatus[];
 export const GENDERS = ["F", "M"] as const;
+export const SECTORS = ["dentale", "estetico", "generico"] as const satisfies readonly Sector[];
 const SEVERITIES = ["high", "medium", "low"] as const;
 const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
 
@@ -185,10 +189,17 @@ export function parseUuid(value: string, label: string): string {
   return value;
 }
 
-/** Codice paziente applicativo, es. "PT-2026-0142". */
-export function parsePatientCode(value: string): string {
-  if (!PATIENT_CODE_RE.test(value)) throw new ValidationError("Codice paziente non valido");
+/** Codice cliente applicativo, es. "PT-2026-0142". */
+export function parseClientCode(value: string): string {
+  if (!CLIENT_CODE_RE.test(value)) throw new ValidationError("Codice cliente non valido");
   return value;
+}
+
+/** Tipo cliente opzionale (query `type`): deve essere un settore noto. */
+export function parseClientTypeParam(value: string | null): Sector | undefined {
+  if (value === null || value === "") return undefined;
+  if (!(SECTORS as readonly string[]).includes(value)) throw new ValidationError("Tipo cliente non valido");
+  return value as Sector;
 }
 
 // ─── Sessione & agenda ──────────────────────────────────────────────────────
@@ -196,6 +207,7 @@ export function parseOnboardingInput(body: JsonObject): OnboardingInput {
   return {
     name: reqString(body, "name", "Nome dello studio", 120),
     seedDemo: optBoolean(body, "seedDemo", "Dati demo", false),
+    sector: optEnum(body, "sector", SECTORS, "Settore") ?? "generico",
   };
 }
 
@@ -298,7 +310,7 @@ export function parseQuotePatch(body: JsonObject): Partial<CreateQuoteInput> & {
   return out;
 }
 
-// ─── Pazienti ───────────────────────────────────────────────────────────────
+// ─── Clienti ────────────────────────────────────────────────────────────────
 function optEmail(obj: JsonObject, key: string): string | undefined {
   const v = optString(obj, key, "Email", 320);
   if (v && !EMAIL_RE.test(v)) throw new ValidationError("Email non valida");
@@ -371,9 +383,15 @@ function parseTreatments(v: unknown): TreatmentHistoryItem[] {
   });
 }
 
-/** Campi del paziente. `required` = creazione (campi obbligatori e default per gli annidati). */
-function patientFields(body: JsonObject, required: boolean): Partial<CreatePatientInput> {
-  const out: Partial<CreatePatientInput> = {};
+/** Campi del cliente. `required` = creazione (campi obbligatori e default per gli annidati). */
+function clientFields(body: JsonObject, required: boolean): Partial<CreateClientInput> {
+  const out: Partial<CreateClientInput> = {};
+  // Il tipo cliente si sceglie in creazione e non cambia (gli attributi dipendono da lui).
+  if (required) out.clientType = optEnum(body, "clientType", SECTORS, "Tipo cliente") ?? "generico";
+  // Forma validata in lib/data/clients (per definizione del settore), qui solo tipo oggetto.
+  if (required || body.attributes !== undefined) {
+    out.attributes = asOptionalRecord(body.attributes, "Attributi") as ClientAttributes;
+  }
   if (required || body.name !== undefined) out.name = reqString(body, "name", "Nome", 200);
   if (required || body.gender !== undefined) out.gender = reqEnum(body, "gender", GENDERS, "Sesso");
   if (required || body.dateOfBirth !== undefined) out.dateOfBirth = parseBirthDate(body, "dateOfBirth");
@@ -395,13 +413,66 @@ function patientFields(body: JsonObject, required: boolean): Partial<CreatePatie
   return out;
 }
 
-export function parseCreatePatient(body: JsonObject): CreatePatientInput {
+export function parseCreateClientInput(body: JsonObject): CreateClientInput {
   // Con required=true tutti i campi obbligatori sono presenti nel risultato.
-  return patientFields(body, true) as CreatePatientInput;
+  return clientFields(body, true) as CreateClientInput;
 }
 
-export function parsePatientPatch(body: JsonObject): Partial<CreatePatientInput> {
-  const out = patientFields(body, false);
+export function parseUpdateClientInput(body: JsonObject): Partial<CreateClientInput> {
+  const out = clientFields(body, false);
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+// ─── Attributi personalizzati (definizioni in client_field_definitions) ─────
+export type AttributeDefinition = Pick<ClientFieldDefinition, "key" | "label" | "type" | "options" | "required">;
+
+function normalizeAttribute(def: AttributeDefinition, v: unknown): ClientAttributes[string] {
+  if (isBlank(v) || v === "") return null;
+  const label = def.label;
+  switch (def.type) {
+    case "text":
+      if (typeof v !== "string") throw new ValidationError(`${label} non valido`);
+      if (v.length > 2000) throw new ValidationError(`${label}: massimo 2000 caratteri`);
+      return v.trim() || null;
+    case "number":
+      if (typeof v !== "number" || !Number.isFinite(v)) throw new ValidationError(`${label} non valido`);
+      return v;
+    case "date":
+      return parseIsoDate(v, label);
+    case "select":
+      if (typeof v !== "string" || !def.options.includes(v)) throw new ValidationError(`${label} non valido`);
+      return v;
+    case "bool":
+      if (typeof v !== "boolean") throw new ValidationError(`${label} non valido`);
+      return v;
+  }
+}
+
+/**
+ * Valida gli attributi contro le definizioni (chiavi note, tipo, select, required).
+ * `partial`: in update si controlla solo ciò che arriva (niente required sulle chiavi assenti).
+ * Restituisce i valori normalizzati; i campi `bool` obbligatori devono essere `true` (consenso).
+ */
+export function validateAttributes(
+  input: JsonObject,
+  definitions: readonly AttributeDefinition[],
+  partial = false,
+): ClientAttributes {
+  const byKey = new Map(definitions.map((d) => [d.key, d]));
+  const out: ClientAttributes = {};
+  for (const [key, v] of Object.entries(input)) {
+    const def = byKey.get(key);
+    if (!def) throw new ValidationError(`Campo "${key}" non previsto per questo tipo di cliente`);
+    out[key] = normalizeAttribute(def, v);
+  }
+  if (!partial) {
+    for (const def of definitions) {
+      if (!def.required) continue;
+      const v = out[def.key];
+      const missing = def.type === "bool" ? v !== true : v === undefined || v === null;
+      if (missing) throw new ValidationError(`${def.label} obbligatorio`);
+    }
+  }
   return out;
 }

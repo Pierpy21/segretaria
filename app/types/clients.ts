@@ -43,7 +43,25 @@ export interface TreatmentHistoryItem {
   status: "Completato" | "Pianificato" | "In corso";
 }
 
-export interface Patient {
+/** Settore dello studio (companies.sector) = tipo cliente di default. */
+export type Sector = "dentale" | "estetico" | "generico";
+export type ClientFieldType = "text" | "number" | "date" | "select" | "bool";
+export type ClientAttributeValue = string | number | boolean | null;
+export type ClientAttributes = Record<string, ClientAttributeValue>;
+
+/** Campo personalizzato (client_field_definitions) per company + tipo cliente. */
+export interface ClientFieldDefinition {
+  clientType: string;
+  key: string;
+  label: string;
+  type: ClientFieldType;
+  options: string[];
+  required: boolean;
+  position: number;
+  sensitive: boolean;
+}
+
+export interface Client {
   id: string; // e.g. "PT-2026-0142"
   name: string;
   gender: "F" | "M";
@@ -55,6 +73,10 @@ export interface Patient {
   email: string;
   address: string;
   fiscalCode: string;
+  /** Tipo cliente (= settore di default dello studio, es. "dentale") */
+  clientType: string;
+  /** Campi personalizzati non sensibili (+ sensibili se il ruolo ha clinical:read) */
+  attributes: ClientAttributes;
   recommendation: string;
   insurance: InsuranceCardData;
   previousVisit: PreviousVisitNote;
@@ -62,4 +84,3 @@ export interface Patient {
   xrayFindings: XRayFinding[];
   treatments: TreatmentHistoryItem[];
 }
-

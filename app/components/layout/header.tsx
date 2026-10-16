@@ -46,7 +46,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <input
           type="text"
           className="bg-transparent outline-none flex-1 text-xs sm:text-sm text-ink placeholder-ink-muted min-w-0"
-          placeholder="Cerca pazienti, cure…"
+          placeholder="Cerca clienti…"
         />
       </div>
 

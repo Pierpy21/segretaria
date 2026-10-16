@@ -1,6 +1,7 @@
-import type { Patient } from "@/app/types/patients";
+import type { Client } from "@/app/types/clients";
 
-export const INITIAL_PATIENTS: Patient[] = [
+// clientType/attributes non sono nel mock: li assegna il seed (lib/data/seed.ts)
+export const INITIAL_PATIENTS: Omit<Client, "clientType" | "attributes">[] = [
   {
     id: "PT-2026-0142",
     name: "Elena Rossi",

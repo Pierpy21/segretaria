@@ -2,7 +2,7 @@
 import type { CompanyRole } from "@/app/types/api";
 
 export type Permission =
-  | "patients:read" | "patients:write" | "clinical:read"
+  | "clients:read" | "clients:write" | "clinical:read"
   | "chat:read" | "chat:write"
   | "calendar:read" | "calendar:write"
   | "reminders:read" | "reminders:write"
@@ -16,7 +16,7 @@ export type Permission =
 export type AccessProfile = "dottore" | "contabile" | "staff";
 
 const STAFF: Permission[] = [
-  "patients:read", "patients:write", "clinical:read",
+  "clients:read", "clients:write", "clinical:read",
   "chat:read", "chat:write",
   "calendar:read", "calendar:write",
   "reminders:read", "reminders:write",
@@ -31,7 +31,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, readonly Permission[]> = {
   admin: [...STAFF, "settings:manage", "members:manage"],
   member: STAFF,
   accountant: [
-    "patients:read",
+    "clients:read",
     "quotes:read", "quotes:write",
     "payments:read", "payments:write",
     "reports:read",
