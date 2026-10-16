@@ -13,16 +13,16 @@ interface MaintenanceBoardProps {
   priorityColor: Record<TaskPriority, string>;
 }
 
-export default function MaintenanceBoard({ boardData, priorityColor }: MaintenanceBoardProps) {
+export default function MaintenanceBoard({ boardData }: MaintenanceBoardProps) {
   return (
-    <div className="bg-white rounded-2xl overflow-hidden flex flex-col border border-slate-200">
+    <div className="bg-surface rounded-2xl overflow-hidden flex flex-col border border-line">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-line">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Attività Cliniche & Studio</h2>
-          <p className="text-xs text-slate-500">Kanban operativo: sterilizzazione, recall e lab</p>
+          <h2 className="text-sm font-semibold text-ink">Attività Cliniche & Studio</h2>
+          <p className="text-xs text-ink-muted">Kanban operativo: sterilizzazione, recall e lab</p>
         </div>
-        <button className="text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors">
+        <button className="text-xs font-semibold text-accent-text hover:text-ink transition-colors">
           + Aggiungi attività
         </button>
       </div>
@@ -33,18 +33,18 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
         {boardData.map(({ col, accent, bg, tasks }) => (
           <div
             key={col}
-            className="p-3 flex flex-col gap-2 border-r border-slate-200 last:border-r-0 [background-color:var(--col-bg)]"
-            style={{ ["--col-bg" as any]: bg }}
+            className="p-3 flex flex-col gap-2 border-r border-line last:border-r-0 [background-color:var(--col-bg)]"
+            style={{ ["--col-bg" as string]: bg }}
           >
             {/* Column Header */}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent }} />
-              <span className="text-xs font-bold text-slate-900">{col}</span>
+              <span className="text-xs font-bold text-ink">{col}</span>
               <span
                 className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full [background-color:var(--badge-bg-soft)]"
-                style={{ 
-                  ["--badge-bg-soft" as any]: `${accent}25`,
-                  color: accent 
+                style={{
+                  ["--badge-bg-soft" as string]: `${accent}25`,
+                  color: accent
                 }}
               >
                 {tasks.length}
@@ -53,7 +53,7 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
 
             {/* Task Cards */}
             {tasks.map((t, i) => {
-              const prioMeta = t.priority === "high" 
+              const prioMeta = t.priority === "high"
                 ? { label: "Alta", bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" }
                 : t.priority === "medium"
                 ? { label: "Media", bg: "#fef3c7", text: "#92400e", border: "#fcd34d" }
@@ -62,13 +62,13 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
               return (
                 <div
                   key={i}
-                  className="bg-white rounded-xl p-3 cursor-pointer border border-slate-300 shadow-2xs hover:border-slate-400 hover:shadow-xs transition-all"
+                  className="bg-surface rounded-xl p-3 cursor-pointer border border-line-strong shadow-2xs hover:border-ink-muted hover:shadow-xs transition-all"
                 >
-                  <p className="text-xs font-semibold leading-snug mb-2.5 text-slate-900">{t.title}</p>
+                  <p className="text-xs font-semibold leading-snug mb-2.5 text-ink">{t.title}</p>
                   <div className="flex items-center justify-between">
                     <span
                       className="text-[10px] font-bold px-2 py-0.5 rounded-md border"
-                      style={{ 
+                      style={{
                         backgroundColor: prioMeta.bg,
                         color: prioMeta.text,
                         borderColor: prioMeta.border
@@ -76,16 +76,16 @@ export default function MaintenanceBoard({ boardData, priorityColor }: Maintenan
                     >
                       {prioMeta.label}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-ink-muted">
                       {t.ai ? (
                         <>
-                          <Bot size={12} className="text-blue-600" />
-                          <span className="text-blue-600 font-bold">AI Studio</span>
+                          <Bot size={12} className="text-accent-text" />
+                          <span className="text-accent-text font-bold">AI Studio</span>
                         </>
                       ) : (
                         <>
-                          <User size={12} className="text-slate-600" />
-                          <span className="text-slate-700 font-semibold">Staff</span>
+                          <User size={12} className="text-ink-muted" />
+                          <span className="text-ink font-semibold">Staff</span>
                         </>
                       )}
                     </span>

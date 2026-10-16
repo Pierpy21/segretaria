@@ -24,18 +24,24 @@ export interface ReminderItem {
 }
 
 export interface CalendarEventData {
-  id: number;
+  /** UUID della riga su DB */
+  id: string;
   title: string;
+  /** Data YYYY-MM-DD */
+  date: string;
+  /** "HH:mm" oppure "Tutto il giorno" */
   time: string;
-  dateNum: number;
+  endTime?: string;
   color: string;
   source: EventSource;
   description: string;
   isAiGenerated: boolean;
+  /** ID esterno (Google event id / CalDAV href) per eventi sincronizzati */
+  externalId?: string;
 }
 
 export interface ReminderData {
-  id: number;
+  id: string;
   text: string;
   time: string;
   priority: ReminderPriority;
@@ -43,6 +49,8 @@ export interface ReminderData {
 }
 
 export interface MonthCell {
+  /** Data YYYY-MM-DD */
+  date: string;
   dateNum: number;
   inMonth: boolean;
   isToday: boolean;

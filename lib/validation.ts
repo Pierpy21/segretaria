@@ -1,0 +1,407 @@
+// Validazione manuale degli input delle route (nessuna libreria esterna).
+// Ogni funzione lancia ValidationError con messaggio in italiano: la UI lo mostra così com'è.
+import { randomUUID } from "node:crypto";
+import type {
+  AppleConnectInput,
+  CreateCalendarEventInput,
+  CreateMessageInput,
+  CreatePatientInput,
+  CreateQuoteInput,
+  CreateReminderInput,
+  CreateTaskInput,
+  OnboardingInput,
+  UpdateReminderInput,
+  UpdateTaskInput,
+} from "@/app/types/api";
+import type { EventSource, ReminderPriority, ReminderStatus } from "@/app/types/calendar";
+import type { ColumnId, TaskPriority } from "@/app/types/maintenance";
+import type { MessageFrom } from "@/app/types/messaging";
+import type {
+  InsuranceCardData,
+  PreviousVisitNote,
+  SelectedToothData,
+  TreatmentHistoryItem,
+  XRayFinding,
+} from "@/app/types/patients";
+import type { QuoteStatus } from "@/app/types/quotes";
+import { parseToUtcMs } from "@/lib/calendar-sync/time";
+import { parseDateInput } from "@/lib/data/format";
+import { ValidationError } from "@/lib/errors";
+
+export type JsonObject = Record<string, unknown>;
+
+const DAY_MS = 86_400_000;
+export const MAX_RANGE_DAYS = 400;
+
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PATIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ─── Enum del contratto (app/types/*) ───────────────────────────────────────
+export const EVENT_SOURCES = ["Google Calendar", "Apple Calendar", "Manual", "AI Secretary"] as const satisfies readonly EventSource[];
+export const REMINDER_PRIORITIES = ["high", "medium", "low"] as const satisfies readonly ReminderPriority[];
+export const REMINDER_STATUSES = ["active", "resolved", "archived"] as const satisfies readonly ReminderStatus[];
+export const TASK_PRIORITIES = ["high", "medium", "low"] as const satisfies readonly TaskPriority[];
+export const COLUMN_IDS = ["todo", "in-progress", "done"] as const satisfies readonly ColumnId[];
+export const MESSAGE_FROM = ["contact", "user", "ai-draft"] as const satisfies readonly MessageFrom[];
+/** Il client può inviare solo messaggi dello studio: "contact" arriva dal canale WhatsApp/web. */
+export const CLIENT_MESSAGE_FROM = ["user", "ai-draft"] as const satisfies readonly MessageFrom[];
+export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined"] as const satisfies readonly QuoteStatus[];
+export const GENDERS = ["F", "M"] as const;
+const SEVERITIES = ["high", "medium", "low"] as const;
+const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
+
+// ─── Primitivi ──────────────────────────────────────────────────────────────
+function isBlank(v: unknown): boolean {
+  return v === undefined || v === null;
+}
+
+/** Corpo JSON che deve essere un oggetto. */
+export async function readJsonObject(request: Request): Promise<JsonObject> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new ValidationError("Corpo della richiesta non valido (JSON atteso)");
+  }
+  return asRecord(body, "Il corpo della richiesta");
+}
+
+function asRecord(value: unknown, label: string): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ValidationError(`${label} non valido`);
+  }
+  return value as JsonObject;
+}
+
+function asOptionalRecord(value: unknown, label: string): JsonObject {
+  return isBlank(value) ? {} : asRecord(value, label);
+}
+
+function asArray(value: unknown, label: string, max = 200): unknown[] {
+  if (isBlank(value)) return [];
+  if (!Array.isArray(value)) throw new ValidationError(`${label} non valido (lista attesa)`);
+  if (value.length > max) throw new ValidationError(`${label}: massimo ${max} elementi`);
+  return value;
+}
+
+/** Stringa obbligatoria, trimmata, non vuota e con lunghezza massima. */
+export function reqString(obj: JsonObject, key: string, label: string, max: number): string {
+  const v = obj[key];
+  if (typeof v !== "string" || !v.trim()) throw new ValidationError(`${label} obbligatorio`);
+  const t = v.trim();
+  if (t.length > max) throw new ValidationError(`${label}: massimo ${max} caratteri`);
+  return t;
+}
+
+/** Stringa opzionale (assente/null → undefined), trimmata. */
+export function optString(obj: JsonObject, key: string, label: string, max: number): string | undefined {
+  const v = obj[key];
+  if (isBlank(v)) return undefined;
+  if (typeof v !== "string") throw new ValidationError(`${label} non valido`);
+  const t = v.trim();
+  if (t.length > max) throw new ValidationError(`${label}: massimo ${max} caratteri`);
+  return t;
+}
+
+export function reqEnum<T extends string>(obj: JsonObject, key: string, allowed: readonly T[], label: string): T {
+  const v = obj[key];
+  if (typeof v === "string" && allowed.some((a) => a === v)) return v as T;
+  throw new ValidationError(`${label} non valido`);
+}
+
+export function optEnum<T extends string>(obj: JsonObject, key: string, allowed: readonly T[], label: string): T | undefined {
+  return isBlank(obj[key]) ? undefined : reqEnum(obj, key, allowed, label);
+}
+
+export function reqNumber(
+  obj: JsonObject,
+  key: string,
+  label: string,
+  opts: { min?: number; max?: number; integer?: boolean } = {},
+): number {
+  const v = obj[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new ValidationError(`${label} non valido`);
+  if (opts.integer && !Number.isInteger(v)) throw new ValidationError(`${label} deve essere un numero intero`);
+  if ((opts.min !== undefined && v < opts.min) || (opts.max !== undefined && v > opts.max)) {
+    throw new ValidationError(`${label} fuori dai limiti consentiti`);
+  }
+  return v;
+}
+
+export function optBoolean(obj: JsonObject, key: string, label: string, fallback: boolean): boolean {
+  const v = obj[key];
+  if (isBlank(v)) return fallback;
+  if (typeof v !== "boolean") throw new ValidationError(`${label} non valido`);
+  return v;
+}
+
+/** "HH:mm" */
+export function reqTime(obj: JsonObject, key: string, label: string): string {
+  const v = obj[key];
+  if (typeof v !== "string" || !TIME_RE.test(v.trim())) throw new ValidationError(`${label} non valido (formato HH:mm)`);
+  return v.trim();
+}
+
+/** "YYYY-MM-DD" reale (es. non 2026-02-30). */
+export function parseIsoDate(value: unknown, label: string): string {
+  if (isBlank(value) || value === "") throw new ValidationError(`${label} obbligatoria`);
+  if (typeof value !== "string") throw new ValidationError(`${label} non valida (formato YYYY-MM-DD)`);
+  const s = value.trim();
+  const m = ISO_DATE_RE.exec(s);
+  if (!m) throw new ValidationError(`${label} non valida (formato YYYY-MM-DD)`);
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {
+    throw new ValidationError(`${label} non valida (formato YYYY-MM-DD)`);
+  }
+  return s;
+}
+
+/**
+ * Intervallo [from, to) di giorni YYYY-MM-DD (to esclusivo), interpretato
+ * come mezzanotte nel fuso CALENDAR_TIMEZONE.
+ */
+export function parseDayRange(from: unknown, to: unknown, tz: string): { from: Date; to: Date } {
+  const fromDay = parseIsoDate(from, "Data iniziale 'from'");
+  const toDay = parseIsoDate(to, "Data finale 'to'");
+  const fromMs = parseToUtcMs(fromDay, tz);
+  const toMs = parseToUtcMs(toDay, tz);
+  if (fromMs === null || toMs === null) throw new ValidationError("Intervallo di date non valido");
+  if (toMs <= fromMs) throw new ValidationError("'to' deve essere successivo a 'from'");
+  if (toMs - fromMs > MAX_RANGE_DAYS * DAY_MS) {
+    throw new ValidationError(`Intervallo massimo di ${MAX_RANGE_DAYS} giorni`);
+  }
+  return { from: new Date(fromMs), to: new Date(toMs) };
+}
+
+/** Id UUID di un path param: 400 prima di arrivare al database. */
+export function parseUuid(value: string, label: string): string {
+  if (!UUID_RE.test(value)) throw new ValidationError(`${label} non valido`);
+  return value;
+}
+
+/** Codice paziente applicativo, es. "PT-2026-0142". */
+export function parsePatientCode(value: string): string {
+  if (!PATIENT_CODE_RE.test(value)) throw new ValidationError("Codice paziente non valido");
+  return value;
+}
+
+// ─── Sessione & agenda ──────────────────────────────────────────────────────
+export function parseOnboardingInput(body: JsonObject): OnboardingInput {
+  return {
+    name: reqString(body, "name", "Nome dello studio", 120),
+    seedDemo: optBoolean(body, "seedDemo", "Dati demo", false),
+  };
+}
+
+export function parseCalendarEventInput(body: JsonObject): CreateCalendarEventInput {
+  return {
+    title: reqString(body, "title", "Titolo", 300),
+    description: optString(body, "description", "Descrizione", 5000),
+    date: parseIsoDate(body.date, "Data"),
+    startTime: reqTime(body, "startTime", "Orario di inizio"),
+    endTime: reqTime(body, "endTime", "Orario di fine"),
+    source: reqEnum(body, "source", EVENT_SOURCES, "Origine evento"),
+  };
+}
+
+export function parseAppleConnectInput(body: JsonObject): AppleConnectInput {
+  const appleId = reqString(body, "appleId", "Apple ID", 320);
+  if (!EMAIL_RE.test(appleId)) throw new ValidationError("Apple ID non valido (indirizzo email atteso)");
+  return {
+    appleId,
+    appPassword: reqString(body, "appPassword", "Password specifica per app", 200),
+    calendarName: optString(body, "calendarName", "Nome calendario", 200),
+  };
+}
+
+// ─── Promemoria ─────────────────────────────────────────────────────────────
+export function parseReminderInput(body: JsonObject): CreateReminderInput {
+  return {
+    text: reqString(body, "text", "Testo del promemoria", 500),
+    time: reqTime(body, "time", "Orario"),
+    priority: reqEnum(body, "priority", REMINDER_PRIORITIES, "Priorità"),
+  };
+}
+
+export function parseReminderStatusPatch(body: JsonObject): UpdateReminderInput {
+  return { status: reqEnum(body, "status", REMINDER_STATUSES, "Stato") };
+}
+
+// ─── Attività ───────────────────────────────────────────────────────────────
+export function parseTaskInput(body: JsonObject): CreateTaskInput {
+  return {
+    title: reqString(body, "title", "Titolo", 200),
+    description: optString(body, "description", "Descrizione", 5000),
+    priority: reqEnum(body, "priority", TASK_PRIORITIES, "Priorità"),
+    columnId: reqEnum(body, "columnId", COLUMN_IDS, "Colonna"),
+    assignedTo: optString(body, "assignedTo", "Assegnatario", 120),
+  };
+}
+
+export function parseTaskPatch(body: JsonObject): UpdateTaskInput {
+  const out: UpdateTaskInput = {};
+  if (body.title !== undefined) out.title = reqString(body, "title", "Titolo", 200);
+  if (body.description !== undefined) out.description = optString(body, "description", "Descrizione", 5000) ?? "";
+  if (body.priority !== undefined) out.priority = reqEnum(body, "priority", TASK_PRIORITIES, "Priorità");
+  if (body.columnId !== undefined) out.columnId = reqEnum(body, "columnId", COLUMN_IDS, "Colonna");
+  if (body.assignedTo !== undefined) out.assignedTo = optString(body, "assignedTo", "Assegnatario", 120) ?? "";
+  if (body.position !== undefined) out.position = reqNumber(body, "position", "Posizione", { min: 0, integer: true });
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+// ─── Chat ───────────────────────────────────────────────────────────────────
+export function parseMessageInput(body: JsonObject): CreateMessageInput {
+  return {
+    from: reqEnum(body, "from", CLIENT_MESSAGE_FROM, "Mittente"),
+    text: reqString(body, "text", "Testo del messaggio", 4000),
+  };
+}
+
+// ─── Preventivi ─────────────────────────────────────────────────────────────
+const MAX_AMOUNT = 1_000_000_000;
+
+function optQuoteDate(body: JsonObject): string | undefined {
+  const v = body.date;
+  if (isBlank(v)) return undefined;
+  if (typeof v !== "string" || !parseDateInput(v)) {
+    throw new ValidationError("Data preventivo non valida (es. 1 Lug 2026 o 2026-07-01)");
+  }
+  return v.trim();
+}
+
+export function parseQuoteInput(body: JsonObject): CreateQuoteInput {
+  return {
+    client: reqString(body, "client", "Paziente", 200),
+    type: reqString(body, "type", "Prestazione", 100),
+    amount: reqNumber(body, "amount", "Importo", { min: 0, max: MAX_AMOUNT }),
+    description: optString(body, "description", "Descrizione", 2000),
+    date: optQuoteDate(body),
+  };
+}
+
+export function parseQuotePatch(body: JsonObject): Partial<CreateQuoteInput> & { status?: QuoteStatus } {
+  const out: Partial<CreateQuoteInput> & { status?: QuoteStatus } = {};
+  if (body.client !== undefined) out.client = reqString(body, "client", "Paziente", 200);
+  if (body.type !== undefined) out.type = reqString(body, "type", "Prestazione", 100);
+  if (body.amount !== undefined) out.amount = reqNumber(body, "amount", "Importo", { min: 0, max: MAX_AMOUNT });
+  if (body.description !== undefined) out.description = optString(body, "description", "Descrizione", 2000) ?? "";
+  if (body.date !== undefined) out.date = optQuoteDate(body);
+  if (body.status !== undefined) out.status = reqEnum(body, "status", QUOTE_STATUSES, "Stato");
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+// ─── Pazienti ───────────────────────────────────────────────────────────────
+function optEmail(obj: JsonObject, key: string): string | undefined {
+  const v = optString(obj, key, "Email", 320);
+  if (v && !EMAIL_RE.test(v)) throw new ValidationError("Email non valida");
+  return v;
+}
+
+function parseBirthDate(obj: JsonObject, key: string): string {
+  const v = obj[key];
+  if (typeof v !== "string" || !v.trim()) throw new ValidationError("Data di nascita obbligatoria");
+  if (!parseDateInput(v)) throw new ValidationError("Data di nascita non valida (es. 14 giugno 1995 o 1995-06-14)");
+  return v.trim();
+}
+
+/** Oggetti annidati: solo campi stringa noti; mancanti → "". */
+function pickStrings<K extends string>(value: unknown, label: string, keys: readonly K[], max = 2000): Record<K, string> {
+  const o = asOptionalRecord(value, label);
+  const out = {} as Record<K, string>;
+  for (const key of keys) {
+    const v = o[key];
+    if (isBlank(v)) {
+      out[key] = "";
+      continue;
+    }
+    if (typeof v !== "string") throw new ValidationError(`${label}: campo "${key}" non valido`);
+    if (v.length > max) throw new ValidationError(`${label}: campo "${key}" troppo lungo`);
+    out[key] = v.trim();
+  }
+  return out;
+}
+
+function parseInsurance(v: unknown): InsuranceCardData {
+  return pickStrings(v, "Assicurazione", ["provider", "policyNumber", "type", "expiration"]);
+}
+
+function parsePreviousVisit(v: unknown): PreviousVisitNote {
+  return pickStrings(v, "Ultima visita", ["date", "doctor", "summary", "details"]);
+}
+
+function parseSelectedTooth(v: unknown): SelectedToothData {
+  return pickStrings(v, "Dente selezionato", [
+    "number", "name", "status", "statusColor", "lastExamination", "aiNote",
+  ]);
+}
+
+function parseXrayFindings(v: unknown): XRayFinding[] {
+  return asArray(v, "Radiografie").map((item, i) => {
+    const label = `Radiografia ${i + 1}`;
+    const o = asRecord(item, label);
+    const s = pickStrings(o, label, ["toothNumber", "toothName", "issue", "notes"]);
+    return {
+      id: typeof o.id === "number" && Number.isInteger(o.id) ? o.id : i + 1,
+      ...s,
+      xPercent: reqNumber(o, "xPercent", `${label}: posizione X`, { min: 0, max: 100 }),
+      yPercent: reqNumber(o, "yPercent", `${label}: posizione Y`, { min: 0, max: 100 }),
+      severity: reqEnum(o, "severity", SEVERITIES, `${label}: gravità`),
+    };
+  });
+}
+
+function parseTreatments(v: unknown): TreatmentHistoryItem[] {
+  return asArray(v, "Storico trattamenti").map((item, i) => {
+    const label = `Trattamento ${i + 1}`;
+    const o = asRecord(item, label);
+    const s = pickStrings(o, label, ["id", "date", "treatment", "tooth", "doctor", "cost"], 500);
+    return {
+      ...s,
+      id: s.id || randomUUID(),
+      status: reqEnum(o, "status", TREATMENT_STATUSES, `${label}: stato`),
+    };
+  });
+}
+
+/** Campi del paziente. `required` = creazione (campi obbligatori e default per gli annidati). */
+function patientFields(body: JsonObject, required: boolean): Partial<CreatePatientInput> {
+  const out: Partial<CreatePatientInput> = {};
+  if (required || body.name !== undefined) out.name = reqString(body, "name", "Nome", 200);
+  if (required || body.gender !== undefined) out.gender = reqEnum(body, "gender", GENDERS, "Sesso");
+  if (required || body.dateOfBirth !== undefined) out.dateOfBirth = parseBirthDate(body, "dateOfBirth");
+  if (body.avatar !== undefined) out.avatar = optString(body, "avatar", "Avatar", 500) ?? "";
+  if (body.phone !== undefined) out.phone = optString(body, "phone", "Telefono", 50) ?? "";
+  if (body.email !== undefined) out.email = optEmail(body, "email") ?? "";
+  if (body.address !== undefined) out.address = optString(body, "address", "Indirizzo", 300) ?? "";
+  if (body.fiscalCode !== undefined) {
+    out.fiscalCode = (optString(body, "fiscalCode", "Codice fiscale", 32) ?? "").toUpperCase();
+  }
+  if (body.recommendation !== undefined) {
+    out.recommendation = optString(body, "recommendation", "Segnalazione", 300) ?? "";
+  }
+  if (required || body.insurance !== undefined) out.insurance = parseInsurance(body.insurance);
+  if (required || body.previousVisit !== undefined) out.previousVisit = parsePreviousVisit(body.previousVisit);
+  if (required || body.selectedTooth !== undefined) out.selectedTooth = parseSelectedTooth(body.selectedTooth);
+  if (required || body.xrayFindings !== undefined) out.xrayFindings = parseXrayFindings(body.xrayFindings);
+  if (required || body.treatments !== undefined) out.treatments = parseTreatments(body.treatments);
+  return out;
+}
+
+export function parseCreatePatient(body: JsonObject): CreatePatientInput {
+  // Con required=true tutti i campi obbligatori sono presenti nel risultato.
+  return patientFields(body, true) as CreatePatientInput;
+}
+
+export function parsePatientPatch(body: JsonObject): Partial<CreatePatientInput> {
+  const out = patientFields(body, false);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
