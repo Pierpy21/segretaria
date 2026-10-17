@@ -6,7 +6,7 @@ import { LoaderCircle } from "lucide-react";
 import { apiFetch } from "@/app/lib/api-client";
 import type { MeResponse, OnboardingInput, Sector } from "@/app/types/api";
 import { Skeleton } from "@/app/components/ui/async-state";
-import { SECTOR_OPTIONS } from "@/app/constants/sectors";
+import { SECTOR_OPTIONS, SECTORS } from "@/app/constants/sectors";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -85,7 +85,7 @@ export default function OnboardingPage() {
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="Es. Studio Dentistico Dott. Rossi"
+                  placeholder={SECTORS[sector].namePlaceholder}
                   className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
