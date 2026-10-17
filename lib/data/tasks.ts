@@ -5,6 +5,7 @@ import { tasks, type Task as TaskRow } from "@/drizzle/schema";
 import type { ColumnId } from "@/app/types/maintenance";
 import type { BoardTask, CreateTaskInput, UpdateTaskInput } from "@/app/types/api";
 import { NotFoundError } from "@/lib/errors";
+import { assertAssetInCompany } from "./assets";
 import { assertUuid, first } from "./format";
 
 type TaskColumn = TaskRow["columnId"];
@@ -37,6 +38,7 @@ function toBoardTask(row: TaskRow): BoardTask {
     assignedTo: assigneeOf(row.customMetadata),
     columnId: COLUMN_FROM_DB[row.columnId],
     position: row.position,
+    assetId: row.assetId,
   };
 }
 
@@ -52,6 +54,7 @@ export async function listTasks(tx: Tx, companyId: string): Promise<BoardTask[]>
 /** Posizione = max+1 nella colonna, calcolata come sottoselect dentro lo stesso INSERT (1 round-trip). */
 export async function createTask(tx: Tx, companyId: string, input: CreateTaskInput): Promise<BoardTask> {
   const columnId = COLUMN_TO_DB[input.columnId];
+  if (input.assetId) await assertAssetInCompany(tx, companyId, input.assetId);
 
   const inserted = await tx
     .insert(tasks)
@@ -67,6 +70,7 @@ export async function createTask(tx: Tx, companyId: string, input: CreateTaskInp
       )})`,
       isAi: false,
       customMetadata: input.assignedTo ? { assignedTo: input.assignedTo } : {},
+      assetId: input.assetId ?? null,
     })
     .returning();
   return toBoardTask(first(inserted, "insert tasks"));
@@ -88,6 +92,8 @@ export async function updateTask(tx: Tx, companyId: string, id: string, patch: U
     if (patch.assignedTo.trim()) meta.assignedTo = patch.assignedTo;
     else delete meta.assignedTo;
   }
+  // undefined = invariato, null = scollega
+  if (patch.assetId) await assertAssetInCompany(tx, companyId, patch.assetId);
 
   const updated = await tx
     .update(tasks)
@@ -97,6 +103,7 @@ export async function updateTask(tx: Tx, companyId: string, id: string, patch: U
       priority: patch.priority ?? existing.priority,
       columnId: patch.columnId ? COLUMN_TO_DB[patch.columnId] : existing.columnId,
       position: patch.position ?? existing.position,
+      assetId: patch.assetId !== undefined ? patch.assetId : existing.assetId,
       customMetadata: meta,
       updatedAt: new Date(),
     })

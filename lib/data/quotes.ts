@@ -6,6 +6,7 @@ import type { Quote, QuoteStatus } from "@/app/types/quotes";
 import type { CreateQuoteInput } from "@/app/types/api";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { assertAssetInCompany } from "./assets";
 import {
   assertUuid,
   dateInZone,
@@ -15,8 +16,10 @@ import {
   parseDateInput,
 } from "./format";
 
-export interface QuotePatch extends Partial<CreateQuoteInput> {
+export interface QuotePatch extends Omit<Partial<CreateQuoteInput>, "assetId"> {
   status?: QuoteStatus;
+  /** undefined = invariato, null = scollega il bene */
+  assetId?: string | null;
 }
 
 function toQuote(row: QuoteRow): Quote {
@@ -29,6 +32,7 @@ function toQuote(row: QuoteRow): Quote {
     amount: formatEuro(Number(row.amount)),
     description: row.description,
     isAiGenerated: row.isAiGenerated,
+    assetId: row.assetId,
   };
 }
 
@@ -57,6 +61,7 @@ export async function listQuotes(tx: Tx, companyId: string): Promise<Quote[]> {
 export async function createQuote(tx: Tx, companyId: string, input: CreateQuoteInput): Promise<Quote> {
   const amount = assertAmount(input.amount);
   const quoteDate = resolveDate(input.date);
+  if (input.assetId) await assertAssetInCompany(tx, companyId, input.assetId);
 
   const inserted = await tx
     .insert(quotes)
@@ -68,6 +73,7 @@ export async function createQuote(tx: Tx, companyId: string, input: CreateQuoteI
       amount,
       description: input.description ?? "",
       isAiGenerated: false,
+      assetId: input.assetId ?? null,
     })
     .returning();
   return toQuote(first(inserted, "insert quotes"));
@@ -75,10 +81,12 @@ export async function createQuote(tx: Tx, companyId: string, input: CreateQuoteI
 
 export async function updateQuote(tx: Tx, companyId: string, id: string, patch: QuotePatch): Promise<Quote> {
   assertUuid(id, "id preventivo");
+  if (patch.assetId) await assertAssetInCompany(tx, companyId, patch.assetId);
 
   const updated = await tx
     .update(quotes)
     .set({
+      ...(patch.assetId !== undefined ? { assetId: patch.assetId } : {}),
       ...(patch.client !== undefined ? { client: patch.client } : {}),
       ...(patch.type !== undefined ? { quoteType: patch.type } : {}),
       ...(patch.amount !== undefined ? { amount: assertAmount(patch.amount) } : {}),

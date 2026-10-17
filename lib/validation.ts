@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AppleConnectInput,
+  CreateAssetInput,
   CreateCalendarEventInput,
   CreateClientInput,
   CreateMessageInput,
@@ -10,6 +11,7 @@ import type {
   CreateReminderInput,
   CreateTaskInput,
   OnboardingInput,
+  UpdateAssetInput,
   UpdateReminderInput,
   UpdateTaskInput,
 } from "@/app/types/api";
@@ -19,6 +21,7 @@ import type { MessageFrom } from "@/app/types/messaging";
 import type {
   ClientAttributes,
   ClientFieldDefinition,
+  FieldEntity,
   InsuranceCardData,
   PreviousVisitNote,
   SelectedToothData,
@@ -40,6 +43,8 @@ const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
+/** Tipo bene = client_type delle definizioni entity='asset' (stesso formato delle chiavi). */
+const ASSET_TYPE_RE = /^[a-z][a-z0-9_]{0,62}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ─── Enum del contratto (app/types/*) ───────────────────────────────────────
@@ -195,11 +200,32 @@ export function parseClientCode(value: string): string {
   return value;
 }
 
+/** Query booleana ("true"/"false"); assente → false. */
+export function parseFlagParam(value: string | null, label: string): boolean {
+  if (value === null || value === "" || value === "false") return false;
+  if (value === "true") return true;
+  throw new ValidationError(`${label} non valido`);
+}
+
 /** Tipo cliente opzionale (query `type`): deve essere un settore noto. */
 export function parseClientTypeParam(value: string | null): Sector | undefined {
   if (value === null || value === "") return undefined;
   if (!(SECTORS as readonly string[]).includes(value)) throw new ValidationError("Tipo cliente non valido");
   return value as Sector;
+}
+
+/** Entità delle definizioni (query `entity`): default 'client'. */
+export function parseEntityParam(value: string | null): FieldEntity {
+  if (value === null || value === "" || value === "client") return "client";
+  if (value === "asset") return "asset";
+  throw new ValidationError("Entità non valida");
+}
+
+/** Tipo bene opzionale (query `type` con entity=asset): formato chiave, non settore. */
+export function parseAssetTypeParam(value: string | null): string | undefined {
+  if (value === null || value === "") return undefined;
+  if (!ASSET_TYPE_RE.test(value)) throw new ValidationError("Tipo bene non valido");
+  return value;
 }
 
 // ─── Sessione & agenda ──────────────────────────────────────────────────────
@@ -211,6 +237,23 @@ export function parseOnboardingInput(body: JsonObject): OnboardingInput {
   };
 }
 
+/** Bene collegato alla creazione (facoltativo). */
+function optAssetId(obj: JsonObject): string | undefined {
+  if (isBlank(obj.assetId)) return undefined;
+  return parseAssetIdValue(obj.assetId);
+}
+
+/** Bene collegato in patch: undefined = invariato, null = scollega. */
+function patchAssetId(obj: JsonObject): string | null | undefined {
+  if (obj.assetId === undefined) return undefined;
+  return obj.assetId === null ? null : parseAssetIdValue(obj.assetId);
+}
+
+function parseAssetIdValue(v: unknown): string {
+  if (typeof v !== "string" || !UUID_RE.test(v)) throw new ValidationError("Bene non valido");
+  return v;
+}
+
 export function parseCalendarEventInput(body: JsonObject): CreateCalendarEventInput {
   return {
     title: reqString(body, "title", "Titolo", 300),
@@ -219,6 +262,7 @@ export function parseCalendarEventInput(body: JsonObject): CreateCalendarEventIn
     startTime: reqTime(body, "startTime", "Orario di inizio"),
     endTime: reqTime(body, "endTime", "Orario di fine"),
     source: reqEnum(body, "source", EVENT_SOURCES, "Origine evento"),
+    assetId: optAssetId(body),
   };
 }
 
@@ -253,6 +297,7 @@ export function parseTaskInput(body: JsonObject): CreateTaskInput {
     priority: reqEnum(body, "priority", TASK_PRIORITIES, "Priorità"),
     columnId: reqEnum(body, "columnId", COLUMN_IDS, "Colonna"),
     assignedTo: optString(body, "assignedTo", "Assegnatario", 120),
+    assetId: optAssetId(body),
   };
 }
 
@@ -264,6 +309,7 @@ export function parseTaskPatch(body: JsonObject): UpdateTaskInput {
   if (body.columnId !== undefined) out.columnId = reqEnum(body, "columnId", COLUMN_IDS, "Colonna");
   if (body.assignedTo !== undefined) out.assignedTo = optString(body, "assignedTo", "Assegnatario", 120) ?? "";
   if (body.position !== undefined) out.position = reqNumber(body, "position", "Posizione", { min: 0, integer: true });
+  if (body.assetId !== undefined) out.assetId = patchAssetId(body);
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
   return out;
 }
@@ -295,17 +341,21 @@ export function parseQuoteInput(body: JsonObject): CreateQuoteInput {
     amount: reqNumber(body, "amount", "Importo", { min: 0, max: MAX_AMOUNT }),
     description: optString(body, "description", "Descrizione", 2000),
     date: optQuoteDate(body),
+    assetId: optAssetId(body),
   };
 }
 
-export function parseQuotePatch(body: JsonObject): Partial<CreateQuoteInput> & { status?: QuoteStatus } {
-  const out: Partial<CreateQuoteInput> & { status?: QuoteStatus } = {};
+export function parseQuotePatch(
+  body: JsonObject,
+): Partial<Omit<CreateQuoteInput, "assetId">> & { status?: QuoteStatus; assetId?: string | null } {
+  const out: Partial<Omit<CreateQuoteInput, "assetId">> & { status?: QuoteStatus; assetId?: string | null } = {};
   if (body.client !== undefined) out.client = reqString(body, "client", "Paziente", 200);
   if (body.type !== undefined) out.type = reqString(body, "type", "Prestazione", 100);
   if (body.amount !== undefined) out.amount = reqNumber(body, "amount", "Importo", { min: 0, max: MAX_AMOUNT });
   if (body.description !== undefined) out.description = optString(body, "description", "Descrizione", 2000) ?? "";
   if (body.date !== undefined) out.date = optQuoteDate(body);
   if (body.status !== undefined) out.status = reqEnum(body, "status", QUOTE_STATUSES, "Stato");
+  if (body.assetId !== undefined) out.assetId = patchAssetId(body);
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
   return out;
 }
@@ -420,6 +470,31 @@ export function parseCreateClientInput(body: JsonObject): CreateClientInput {
 
 export function parseUpdateClientInput(body: JsonObject): Partial<CreateClientInput> {
   const out = clientFields(body, false);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+// ─── Beni del cliente (client_assets) ───────────────────────────────────────
+export function parseAssetInput(body: JsonObject): CreateAssetInput {
+  const assetType = reqString(body, "assetType", "Tipo bene", 63);
+  if (!ASSET_TYPE_RE.test(assetType)) throw new ValidationError("Tipo bene non valido");
+  return {
+    assetType,
+    name: reqString(body, "name", "Nome del bene", 200),
+    identifier: optString(body, "identifier", "Identificativo", 100),
+    note: optString(body, "note", "Note", 2000),
+    attributes: asOptionalRecord(body.attributes, "Attributi") as ClientAttributes,
+  };
+}
+
+/** Il tipo del bene non è modificabile; `null` su identifier/note li svuota. */
+export function parseAssetPatch(body: JsonObject): UpdateAssetInput {
+  if (body.assetType !== undefined) throw new ValidationError("Il tipo del bene non è modificabile");
+  const out: UpdateAssetInput = {};
+  if (body.name !== undefined) out.name = reqString(body, "name", "Nome del bene", 200);
+  if (body.identifier !== undefined) out.identifier = optString(body, "identifier", "Identificativo", 100) || null;
+  if (body.note !== undefined) out.note = optString(body, "note", "Note", 2000) || null;
+  if (body.attributes !== undefined) out.attributes = asOptionalRecord(body.attributes, "Attributi") as ClientAttributes;
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
   return out;
 }

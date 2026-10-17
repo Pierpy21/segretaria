@@ -17,6 +17,7 @@ import {
   resolveAgendaRange,
   upsertExternalEvents,
 } from "@/lib/data/calendar";
+import { assertAssetInCompany } from "@/lib/data/assets";
 import { withUser } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 
@@ -96,6 +97,9 @@ export async function createAgendaEvent(
   companyId: string,
   input: CreateCalendarEventInput,
 ): Promise<CalendarEventData> {
+  // Bene verificato prima di toccare il provider remoto (nessun evento orfano).
+  const { assetId } = input;
+  if (assetId) await withUser((tx) => assertAssetInCompany(tx, companyId, assetId));
   const provider = providerOfSource(input.source);
   if (!provider) return withUser((tx) => createAgendaRow(tx, companyId, input));
 

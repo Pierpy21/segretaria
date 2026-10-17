@@ -46,6 +46,8 @@ export interface TreatmentHistoryItem {
 /** Settore dello studio (companies.sector) = tipo cliente di default. */
 export type Sector = "dentale" | "estetico" | "generico";
 export type ClientFieldType = "text" | "number" | "date" | "select" | "bool";
+/** Entità a cui appartiene una definizione: il cliente o un suo bene (client_assets). */
+export type FieldEntity = "client" | "asset";
 export type ClientAttributeValue = string | number | boolean | null;
 export type ClientAttributes = Record<string, ClientAttributeValue>;
 

@@ -38,6 +38,8 @@ export interface CalendarEventData {
   isAiGenerated: boolean;
   /** ID esterno (Google event id / CalDAV href) per eventi sincronizzati */
   externalId?: string;
+  /** Bene del cliente collegato */
+  assetId?: string | null;
 }
 
 export interface ReminderData {

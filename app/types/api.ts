@@ -9,7 +9,7 @@ import type { CalendarEventData, EventSource, ReminderData, ReminderPriority, Re
 import type { Task, ColumnId, TaskPriority } from "./maintenance";
 import type { ChatListItem, Message, MessageFrom } from "./messaging";
 import type { Quote, QuoteStatus } from "./quotes";
-import type { Client, ClientAttributeValue, ClientAttributes, ClientFieldDefinition, ClientFieldType, Sector } from "./clients";
+import type { Client, ClientAttributeValue, ClientAttributes, ClientFieldDefinition, ClientFieldType, FieldEntity, Sector } from "./clients";
 import type { AccessProfile, Permission } from "@/lib/auth/permissions";
 
 export type { ApiResult } from "./calendar-sync";
@@ -59,6 +59,8 @@ export interface CreateCalendarEventInput {
   startTime: string;  // HH:mm
   endTime: string;    // HH:mm
   source: EventSource;
+  /** Bene del cliente collegato (facoltativo, deve appartenere allo studio) */
+  assetId?: string;
 }
 export interface SyncResult {
   imported: number;
@@ -83,11 +85,13 @@ export interface UpdateReminderInput { status: ReminderStatus }
 // POST   /api/tasks body CreateTaskInput → BoardTask
 // PATCH  /api/tasks/[id] body UpdateTaskInput → BoardTask
 // DELETE /api/tasks/[id] → null
-export interface BoardTask extends Task { columnId: ColumnId; position: number }
+export interface BoardTask extends Task { columnId: ColumnId; position: number; assetId?: string | null }
 export interface CreateTaskInput {
   title: string; description?: string; priority: TaskPriority; columnId: ColumnId; assignedTo?: string;
+  assetId?: string;
 }
-export type UpdateTaskInput = Partial<CreateTaskInput & { position: number }>;
+/** assetId: null = scollega il bene */
+export type UpdateTaskInput = Partial<Omit<CreateTaskInput, "assetId"> & { position: number; assetId: string | null }>;
 
 // ─── Chat ───────────────────────────────────────────────────────────────────
 // GET  /api/conversations → ChatListItem[]
@@ -103,6 +107,48 @@ export interface CreateMessageInput { from: MessageFrom; text: string }
 // DELETE /api/quotes/[id] → null
 export interface CreateQuoteInput {
   client: string; type: string; amount: number; description?: string; date?: string;
+  /** Bene del cliente collegato (facoltativo). In PATCH: null = scollega */
+  assetId?: string | null;
+}
+
+// ─── Beni del cliente (client_assets) ───────────────────────────────────────
+// GET    /api/assets[?clientId=PT-…] → ClientAssetOption[] (attivi, ordinati per cliente e nome)
+// GET    /api/clients/[id]/assets?includeArchived=true → ClientAsset[] (id = codice cliente)
+// POST   /api/clients/[id]/assets body CreateAssetInput → ClientAsset (201)
+// GET    /api/assets/[id] → ClientAsset
+// PATCH  /api/assets/[id] body UpdateAssetInput → ClientAsset
+// DELETE /api/assets/[id] → null (archivia, non elimina)
+// Definizioni campi: lib/data/assets.ts listAssetFieldDefinitions(tx, companyId, assetType)
+export interface ClientAsset {
+  id: string;
+  /** Codice applicativo del cliente (es. "PT-2026-0142") */
+  clientId: string;
+  assetType: string;
+  name: string;
+  identifier: string | null;
+  /** Valori dei campi con entity = 'asset' e client_type = assetType */
+  attributes: ClientAttributes;
+  note: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CreateAssetInput {
+  assetType: string;
+  name: string;
+  identifier?: string;
+  note?: string;
+  attributes?: ClientAttributes;
+}
+/** Bene con il nome del cliente (selettori di eventi/attività/preventivi). */
+export type ClientAssetOption = ClientAsset & { clientName: string };
+
+/** Il tipo del bene non è modificabile (gli attributi dipendono da lui). null = svuota. */
+export interface UpdateAssetInput {
+  name?: string;
+  identifier?: string | null;
+  note?: string | null;
+  attributes?: ClientAttributes;
 }
 
 // ─── Clienti ────────────────────────────────────────────────────────────────
@@ -111,11 +157,13 @@ export interface CreateQuoteInput {
 // POST  /api/clients body CreateClientInput → ClientResponse
 // PATCH /api/clients/[id] body Partial<CreateClientInput> → ClientResponse
 // GET   /api/clients/fields?type=dentale → ClientFieldDefinition[] (ordinati per position)
+// GET   /api/clients/fields?entity=asset[&type=veicolo] → ClientFieldDefinition[] dei beni
+//       (senza type: tutte le definizioni dei beni dello studio; solo non sensibili)
 export type CreateClientInput = Omit<Client, "id" | "age" | "initials">;
 /** Campi clinici: presenti in risposta solo con clinical:read (assenti, non null, altrimenti). */
 export type ClinicalClientKey = "recommendation" | "previousVisit" | "selectedTooth" | "xrayFindings" | "treatments";
 export type ClientResponse = Omit<Client, ClinicalClientKey> & Partial<Pick<Client, ClinicalClientKey>>;
-export type { Sector, ClientFieldDefinition, ClientFieldType, ClientAttributeValue, ClientAttributes };
+export type { Sector, ClientFieldDefinition, ClientFieldType, ClientAttributeValue, ClientAttributes, FieldEntity };
 
 // ─── Badge sidebar (contatori reali) ────────────────────────────────────────
 // GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.

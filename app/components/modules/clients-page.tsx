@@ -28,6 +28,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import { SECTOR_OPTIONS } from "@/app/constants/sectors";
 import ClientAttributesForm from "@/app/components/modules/client-attributes-form";
+import ClientAssetsSection from "@/app/components/modules/client-assets-section";
 import type { ClientAttributes, ClientResponse, CreateClientInput, Sector } from "@/app/types/api";
 
 interface ClientForm {
@@ -692,6 +693,9 @@ export default function ClientsPage() {
               canWrite={canWrite}
               onSaved={handleClientSaved}
             />
+
+            {/* 3b. Beni del cliente (sezione mostrata solo se lo studio ha campi per i beni) */}
+            <ClientAssetsSection key={currentClient.id} clientId={currentClient.id} canWrite={canWrite} />
 
             {/* 4. Insurance Card */}
             <div className="bg-surface rounded-2xl border border-line p-4 shadow-2xs overflow-hidden">

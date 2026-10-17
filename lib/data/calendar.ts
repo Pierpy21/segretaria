@@ -54,6 +54,7 @@ function toEventData(row: CalendarEvent, tz: string): CalendarEventData {
     description: row.description,
     isAiGenerated: row.isAiGenerated,
     externalId: row.externalId ?? undefined,
+    assetId: row.assetId,
   };
 }
 
@@ -123,6 +124,8 @@ export async function createEvent(
       isAiGenerated: input.source === "AI Secretary",
       externalProvider: external?.provider ?? null,
       externalId: external?.externalId ?? null,
+      // Il bene è già verificato da lib/calendar-sync (assertAssetInCompany) prima del provider remoto.
+      assetId: input.assetId ?? null,
     })
     .returning();
   return toEventData(first(inserted, "insert calendar_events"), tz);

@@ -7,6 +7,7 @@ import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
+import AssetSelect from "@/app/components/modules/asset-select";
 import type { TaskPriority, ColumnId, FilterSource } from "@/app/types/maintenance";
 import type { BoardTask, CreateTaskInput, UpdateTaskInput } from "@/app/types/api";
 
@@ -15,9 +16,10 @@ interface NewTaskForm {
   description: string;
   priority: TaskPriority;
   assignedTo: string;
+  assetId: string;
 }
 
-const EMPTY_FORM: NewTaskForm = { title: "", description: "", priority: "medium", assignedTo: "" };
+const EMPTY_FORM: NewTaskForm = { title: "", description: "", priority: "medium", assignedTo: "", assetId: "" };
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Operazione non riuscita. Riprova.";
@@ -94,6 +96,7 @@ export default function MaintenancePage() {
       priority: form.priority,
       columnId: "todo",
       assignedTo: form.assignedTo.trim() || undefined,
+      assetId: form.assetId || undefined,
     };
     setFormError(null);
     setSubmitting(true);
@@ -387,6 +390,7 @@ export default function MaintenancePage() {
                   className="rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
                 />
               </div>
+              <AssetSelect value={form.assetId} onChange={assetId => setForm({ ...form, assetId })} />
             </div>
             {formError && <p className="mt-3 text-xs font-semibold text-red-800">{formError}</p>}
             <div className="flex items-center justify-end gap-2 mt-4">
