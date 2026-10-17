@@ -12,7 +12,7 @@ import {
   type NewClientClinicalRow,
   type NewClientRow,
 } from "@/drizzle/schema";
-import type { ClientAttributes, ClientFieldDefinition } from "@/app/types/clients";
+import type { ClientAttributes, ClientFieldDefinition, FieldEntity } from "@/app/types/clients";
 import type { ClientResponse, ClinicalClientKey, CreateClientInput } from "@/app/types/api";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
@@ -95,14 +95,19 @@ function toDefinition(row: ClientFieldDefinitionRow): ClientFieldDefinition {
 /**
  * Definizioni dei campi dello studio, ordinate per position.
  * `clinical` = il ruolo ha clinical:read: senza, le definizioni sensibili sono escluse.
+ * `entity` = 'client' (default) per i campi cliente, 'asset' per i campi dei beni (clientType = asset_type).
  */
 export async function listFieldDefinitions(
   tx: Tx,
   companyId: string,
   clientType: string | undefined,
   clinical: boolean,
+  entity: FieldEntity = "client",
 ): Promise<ClientFieldDefinition[]> {
-  const conds: SQL[] = [eq(clientFieldDefinitions.companyId, companyId)];
+  const conds: SQL[] = [
+    eq(clientFieldDefinitions.companyId, companyId),
+    eq(clientFieldDefinitions.entity, entity),
+  ];
   if (clientType) conds.push(eq(clientFieldDefinitions.clientType, clientType));
   if (!clinical) conds.push(eq(clientFieldDefinitions.sensitive, false));
   const rows = await tx

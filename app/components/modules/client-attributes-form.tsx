@@ -2,34 +2,38 @@
 
 import { useApiData } from "@/app/hooks/use-api-data";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
-import type { ClientAttributeValue, ClientAttributes, ClientFieldDefinition } from "@/app/types/api";
+import type { ClientAttributeValue, ClientAttributes, ClientFieldDefinition, FieldEntity } from "@/app/types/api";
 
-const INPUT_CLASS =
+export const INPUT_CLASS =
   "w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-surface-muted disabled:text-ink-muted";
 
 export interface ClientAttributesFormProps {
+  /** Tipo cliente (entity = client) oppure tipo bene (entity = asset) */
   clientType: string;
+  /** Default "client"; "asset" usa le definizioni dei campi dei beni */
+  entity?: FieldEntity;
   values: ClientAttributes;
   onChange: (key: string, value: ClientAttributeValue) => void;
   readOnly?: boolean;
 }
 
-/** Form generato dalle definizioni dei campi del tipo cliente (GET /api/clients/fields). */
-export default function ClientAttributesForm({ clientType, values, onChange, readOnly = false }: ClientAttributesFormProps) {
-  const fieldsHook = useApiData<ClientFieldDefinition[]>(`/api/clients/fields?type=${encodeURIComponent(clientType)}`);
+/** Form generato dalle definizioni dei campi (GET /api/clients/fields), per cliente o per bene. */
+export default function ClientAttributesForm({ clientType, entity = "client", values, onChange, readOnly = false }: ClientAttributesFormProps) {
+  const entityQuery = entity === "asset" ? "entity=asset&" : "";
+  const fieldsHook = useApiData<ClientFieldDefinition[]>(`/api/clients/fields?${entityQuery}type=${encodeURIComponent(clientType)}`);
 
   if (fieldsHook.loading) return <Skeleton className="h-20" />;
   if (fieldsHook.error) return <ErrorState message="Impossibile caricare i campi del cliente." onRetry={fieldsHook.reload} />;
 
   const fields = fieldsHook.data ?? [];
   if (fields.length === 0) {
-    return <p className="text-xs text-ink-muted">Nessun campo personalizzato per questo tipo di cliente.</p>;
+    return <p className="text-xs text-ink-muted">Nessun campo personalizzato per questo tipo.</p>;
   }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {fields.map(field => {
-        const id = `attr-${field.key}`;
+        const id = `attr-${entity}-${field.key}`;
         const value = values[field.key] ?? null;
         const reserved = field.sensitive && (
           <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">

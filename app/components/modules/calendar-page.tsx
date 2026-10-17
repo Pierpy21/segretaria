@@ -34,6 +34,7 @@ import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
+import AssetSelect from "@/app/components/modules/asset-select";
 import type { ViewMode, CalendarEventData, ReminderData, ReminderPriority, ReminderStatus, EventSource } from "@/app/types/calendar";
 import type { SyncProvider, ProviderStatus, SyncStatusResponse } from "@/app/types/calendar-sync";
 import type {
@@ -55,6 +56,7 @@ interface EventForm {
   endTime: string;
   description: string;
   source: EventSource;
+  assetId: string;
 }
 
 interface AppleForm {
@@ -75,7 +77,7 @@ function errorMessage(err: unknown): string {
 const sortTime = (e: CalendarEventData) => (e.time === ALL_DAY_LABEL ? "" : e.time);
 
 function emptyForm(date: string): EventForm {
-  return { title: "", date, startTime: "09:00", endTime: "10:00", description: "", source: "Manual" };
+  return { title: "", date, startTime: "09:00", endTime: "10:00", description: "", source: "Manual", assetId: "" };
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -305,6 +307,7 @@ export default function CalendarPage() {
       startTime: form.startTime,
       endTime: form.endTime,
       source: form.source,
+      assetId: form.assetId || undefined,
     };
 
     setFormError(null);
@@ -730,6 +733,8 @@ export default function CalendarPage() {
                   </option>
                 </select>
               </div>
+
+              <AssetSelect value={form.assetId} onChange={assetId => setForm({ ...form, assetId })} />
 
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">Note Cliniche & Materiali</label>
