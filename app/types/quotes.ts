@@ -9,6 +9,8 @@ export interface Quote {
   amount: string;
   description: string;
   isAiGenerated: boolean;
+  /** Bene del cliente collegato */
+  assetId?: string | null;
 }
 
 export interface StatusMeta {

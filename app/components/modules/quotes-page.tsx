@@ -10,6 +10,7 @@ import { useMe } from "@/app/hooks/use-me";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { hasPermission } from "@/lib/auth/permissions";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
+import AssetSelect from "@/app/components/modules/asset-select";
 import { parseAmount } from "@/app/lib/amount";
 import type { Quote, QuoteStatus } from "@/app/types/quotes";
 import type { CreateQuoteInput } from "@/app/types/api";
@@ -19,11 +20,12 @@ interface QuoteForm {
   type: string;
   amount: string;
   description: string;
+  assetId: string;
 }
 
 type QuoteModal = { mode: "create" } | { mode: "edit"; id: string };
 
-const EMPTY_FORM: QuoteForm = { client: "", type: "", amount: "", description: "" };
+const EMPTY_FORM: QuoteForm = { client: "", type: "", amount: "", description: "", assetId: "" };
 
 const STATUS_STATES = ["all", "pending_ai", "quote_sent", "approved", "declined"] as const;
 
@@ -94,6 +96,7 @@ export default function QuotesPage() {
       type: q.type,
       amount: amount === null ? "" : String(amount),
       description: q.description,
+      assetId: q.assetId ?? "",
     });
     setFormError(null);
     setModal({ mode: "edit", id: q.id });
@@ -118,6 +121,7 @@ export default function QuotesPage() {
       type,
       amount,
       description: form.description.trim() || undefined,
+      assetId: form.assetId || null,
     };
     setFormError(null);
     setSubmitting(true);
@@ -346,6 +350,7 @@ export default function QuotesPage() {
                 placeholder="Nome e cognome paziente"
                 className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
               />
+              <AssetSelect value={form.assetId} clientName={form.client} onChange={assetId => setForm({ ...form, assetId })} />
               <input
                 value={form.type}
                 onChange={e => setForm({ ...form, type: e.target.value })}

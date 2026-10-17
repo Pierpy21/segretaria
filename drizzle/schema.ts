@@ -26,6 +26,7 @@ import { authUsers } from "drizzle-orm/supabase";
 import type {
   ClientAttributes,
   ClientFieldType,
+  FieldEntity,
   InsuranceCardData,
   PreviousVisitNote,
   SelectedToothData,
@@ -151,6 +152,8 @@ export const calendarEvents = pgTable(
     externalProvider: text("external_provider", { enum: ["google", "apple"] }),
     externalId: text("external_id"),
     externalEtag: text("external_etag"),
+    /** Bene del cliente collegato (FK composita + ON DELETE SET NULL nella migration) */
+    assetId: uuid("asset_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -158,6 +161,7 @@ export const calendarEvents = pgTable(
   },
   (table) => [
     index("idx_calendar_events_company").on(table.companyId),
+    index("idx_calendar_events_asset").on(table.companyId, table.assetId),
     index("idx_calendar_events_start").on(table.companyId, table.startAt),
     index("calendar_events_created_by_idx").on(table.createdBy),
     uniqueIndex("calendar_events_external_uniq")
@@ -247,6 +251,8 @@ export const tasks = pgTable(
     assignedTo: uuid("assigned_to"),
     columnId: taskColumnEnum("column_id").notNull().default("todo"),
     position: integer("position").notNull().default(0),
+    /** Bene del cliente collegato (nullable) */
+    assetId: uuid("asset_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -255,6 +261,7 @@ export const tasks = pgTable(
   (table) => [
     index("idx_tasks_company").on(table.companyId),
     index("idx_tasks_column").on(table.companyId, table.columnId),
+    index("idx_tasks_asset").on(table.companyId, table.assetId),
     index("tasks_created_by_idx").on(table.createdBy),
   ]
 );
@@ -333,6 +340,8 @@ export const quotes = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
     description: text("description").notNull().default(""),
     isAiGenerated: boolean("is_ai_generated").notNull().default(false),
+    /** Bene del cliente collegato (nullable) */
+    assetId: uuid("asset_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -341,6 +350,7 @@ export const quotes = pgTable(
   (table) => [
     index("idx_quotes_company").on(table.companyId),
     index("idx_quotes_status").on(table.companyId, table.status),
+    index("idx_quotes_asset").on(table.companyId, table.assetId),
     index("quotes_created_by_idx").on(table.createdBy),
   ]
 );
@@ -379,6 +389,44 @@ export const clients = pgTable(
     index("idx_clients_created_by").on(table.createdBy),
     check("clients_gender_check", sql`${table.gender} in ('F', 'M')`),
     check("clients_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// client_assets — beni del cliente (veicoli, animali, immobili…). N per cliente.
+// Attributi validati con client_field_definitions (entity = 'asset', client_type = asset_type).
+// --------------------------------------------------------------------------
+export const clientAssets = pgTable(
+  "client_assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    assetType: text("asset_type").notNull(),
+    name: text("name").notNull(),
+    /** Targa, microchip, matricola… */
+    identifier: text("identifier"),
+    attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
+    note: text("note"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("client_assets_id_company_id_key").on(table.id, table.companyId),
+    foreignKey({
+      name: "client_assets_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    index("idx_client_assets_client").on(table.companyId, table.clientId),
+    index("idx_client_assets_identifier").on(table.companyId, table.identifier),
+    index("idx_client_assets_created_by").on(table.createdBy),
+    check("client_assets_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
+    check("client_assets_type_format", sql`${table.assetType} ~ '^[a-z][a-z0-9_]{0,62}$'`),
   ]
 );
 
@@ -423,6 +471,8 @@ export const clientFieldDefinitions = pgTable(
     companyId: uuid("company_id")
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
+    /** 'client' → clientType = settore; 'asset' → clientType = asset_type */
+    entity: text("entity").$type<FieldEntity>().notNull().default("client"),
     clientType: text("client_type").notNull(),
     key: text("key").notNull(),
     label: text("label").notNull(),
@@ -435,8 +485,9 @@ export const clientFieldDefinitions = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("client_field_definitions_key_unique").on(table.companyId, table.clientType, table.key),
-    index("idx_client_field_definitions_company").on(table.companyId, table.clientType, table.position),
+    unique("client_field_definitions_key_unique").on(table.companyId, table.entity, table.clientType, table.key),
+    index("idx_client_field_definitions_company").on(table.companyId, table.entity, table.clientType, table.position),
+    check("client_field_definitions_entity_check", sql`${table.entity} in ('client', 'asset')`),
     check("client_field_definitions_type_check", sql`${table.type} in ('text', 'number', 'date', 'select', 'bool')`),
     check("client_field_definitions_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
     check("client_field_definitions_options_array", sql`jsonb_typeof(${table.options}) = 'array'`),
@@ -476,6 +527,8 @@ export type NewQuote = typeof quotes.$inferInsert;
 /** Riga DB dei clienti (il tipo UI è `Client` in app/types/clients.ts) */
 export type ClientRow = typeof clients.$inferSelect;
 export type NewClientRow = typeof clients.$inferInsert;
+export type ClientAssetRow = typeof clientAssets.$inferSelect;
+export type NewClientAssetRow = typeof clientAssets.$inferInsert;
 export type ClientClinicalRow = typeof clientClinical.$inferSelect;
 export type NewClientClinicalRow = typeof clientClinical.$inferInsert;
 export type ClientFieldDefinitionRow = typeof clientFieldDefinitions.$inferSelect;
