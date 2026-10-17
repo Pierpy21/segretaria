@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Bot, LogOut } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMe, roleLabel, initialsOf } from "@/app/hooks/use-me";
+import { SECTORS } from "@/app/constants/sectors";
 import { useSidebarBadges } from "@/app/hooks/use-sidebar-badges";
 import { visibleNavItems, type NavArea } from "@/app/constants/navigation";
 
@@ -22,6 +23,8 @@ function formatBadge(count: number): string {
 export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { data: me } = useMe();
+  // Testi del settore solo quando /api/me è caricato, per non mostrare quelli sbagliati
+  const sector = me?.company ? SECTORS[me.company.sector] : null;
   // Ricaricato anche al cambio di pagina
   const badges = useSidebarBadges(pathname);
   const [signingOut, setSigningOut] = useState(false);
@@ -62,11 +65,11 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
               <Bot size={15} className="text-accent-ink" />
             </div>
             <span className="text-sidebar-ink font-bold text-lg tracking-tight">
-              Segretar<span className="text-accent">IA</span> <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-accent-soft text-accent ml-1">Dental</span>
+              Segretar<span className="text-accent">IA</span> {sector && <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-accent-soft text-accent ml-1">{sector.badge}</span>}
             </span>
           </div>
           <p className="text-[11px] mt-1.5 font-medium tracking-wide uppercase text-sidebar-ink-muted">
-            {area === "contabile" ? "Area contabile" : "Studio Dentistico Smart AI"}
+            {area === "contabile" ? "Area contabile" : sector?.subtitle ?? "\u00a0"}
           </p>
         </div>
         {onClose && (
