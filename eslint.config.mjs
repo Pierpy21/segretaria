@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Worktree git annidate (non codice dell'app)
     ".kilo/**",
+    ".claude/**",
   ]),
 ]);
 
