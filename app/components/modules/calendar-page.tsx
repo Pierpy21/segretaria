@@ -35,8 +35,10 @@ import { useApiData } from "@/app/hooks/use-api-data";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import AssetSelect from "@/app/components/modules/asset-select";
+import { useTerms } from "@/app/hooks/use-terms";
 import type { ViewMode, CalendarEventData, ReminderData, ReminderPriority, ReminderStatus, EventSource } from "@/app/types/calendar";
 import type { SyncProvider, ProviderStatus, SyncStatusResponse } from "@/app/types/calendar-sync";
+import type { AppointmentType } from "@/app/types/settings";
 import type {
   CreateCalendarEventInput,
   AppleConnectInput,
@@ -54,6 +56,9 @@ interface EventForm {
   date: string;
   startTime: string;
   endTime: string;
+  /** true dopo che l'utente ha modificato l'ora di fine: il tipo non la sovrascrive più */
+  endEdited: boolean;
+  appointmentTypeId: string;
   description: string;
   source: EventSource;
   assetId: string;
@@ -77,12 +82,23 @@ function errorMessage(err: unknown): string {
 const sortTime = (e: CalendarEventData) => (e.time === ALL_DAY_LABEL ? "" : e.time);
 
 function emptyForm(date: string): EventForm {
-  return { title: "", date, startTime: "09:00", endTime: "10:00", description: "", source: "Manual", assetId: "" };
+  return {
+    title: "",
+    date,
+    startTime: "09:00",
+    endTime: "10:00",
+    endEdited: false,
+    appointmentTypeId: "",
+    description: "",
+    source: "Manual",
+    assetId: "",
+  };
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
+  const terms = useTerms();
   const [view, setView] = useState<ViewMode>("Month");
   const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -108,11 +124,13 @@ export default function CalendarPage() {
   const statusHook = useApiData<SyncStatusResponse>("/api/calendar/status");
   const eventsHook = useApiData<CalendarEventData[]>(`/api/calendar/events?from=${from}&to=${to}`);
   const remindersHook = useApiData<ReminderData[]>("/api/reminders");
+  const typesHook = useApiData<AppointmentType[]>("/api/appointment-types");
 
   const { reload: reloadStatus, mutate: mutateStatus } = statusHook;
   const { reload: reloadEvents, mutate: mutateEvents } = eventsHook;
   const { mutate: mutateReminders } = remindersHook;
 
+  const appointmentTypes = typesHook.data ?? [];
   const events = eventsHook.data ?? [];
   const reminders = remindersHook.data ?? [];
   const selectedEvent = events.find(e => e.id === selectedEventId) ?? null;
@@ -308,6 +326,7 @@ export default function CalendarPage() {
       endTime: form.endTime,
       source: form.source,
       assetId: form.assetId || undefined,
+      appointmentTypeId: form.appointmentTypeId || undefined,
     };
 
     setFormError(null);
@@ -379,7 +398,7 @@ export default function CalendarPage() {
             <div>
               <h2 className="text-sm font-semibold text-ink">Agenda & Appuntamenti Studio</h2>
               <p className="text-xs text-ink-muted">
-                Planning Poltrone Odontoiatriche
+                Planning dello studio
                 {(eventsHook.loading || syncing) && <span className="ml-2 text-[10px] text-ink-muted">Aggiornamento…</span>}
               </p>
             </div>
@@ -670,18 +689,46 @@ export default function CalendarPage() {
 
             <div className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-ink mb-1">Paziente & Prestazione</label>
+                <label htmlFor="event-title" className="block text-xs font-bold text-ink mb-1">{terms.clientSingular} & Prestazione</label>
                 <input
+                  id="event-title"
                   value={form.title}
                   onChange={e => setForm({ ...form, title: e.target.value })}
-                  placeholder="Es. Elena Rossi — Urgenza dolore o Igiene"
+                  placeholder="Es. Mario Rossi — Visita di controllo"
                   className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
+              {appointmentTypes.length > 0 && (
+                <div>
+                  <label htmlFor="event-type" className="block text-xs font-bold text-ink mb-1">Tipo di appuntamento</label>
+                  <select
+                    id="event-type"
+                    value={form.appointmentTypeId}
+                    onChange={e => {
+                      const type = appointmentTypes.find(x => x.id === e.target.value);
+                      setForm(f => ({
+                        ...f,
+                        appointmentTypeId: e.target.value,
+                        endTime: type && !f.endEdited ? addMinutesToTime(f.startTime, type.durationMinutes) : f.endTime,
+                      }));
+                    }}
+                    className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent cursor-pointer"
+                  >
+                    <option value="">Nessuno</option>
+                    {appointmentTypes.map(type => (
+                      <option key={type.id} value={type.id}>
+                        {type.label} · {type.durationMinutes} min
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-bold text-ink mb-1">Data</label>
+                <label htmlFor="event-date" className="block text-xs font-bold text-ink mb-1">Data</label>
                 <input
+                  id="event-date"
                   type="date"
                   value={form.date}
                   onChange={e => setForm({ ...form, date: e.target.value })}
@@ -697,11 +744,11 @@ export default function CalendarPage() {
                     value={form.startTime}
                     onChange={e => {
                       const startTime = e.target.value;
-                      setForm({
-                        ...form,
-                        startTime,
-                        endTime: startTime >= form.endTime ? addMinutesToTime(startTime, 60) : form.endTime,
-                      });
+                      const type = appointmentTypes.find(x => x.id === form.appointmentTypeId);
+                      let endTime = form.endTime;
+                      if (type && !form.endEdited) endTime = addMinutesToTime(startTime, type.durationMinutes);
+                      else if (startTime >= form.endTime) endTime = addMinutesToTime(startTime, 60);
+                      setForm({ ...form, startTime, endTime });
                     }}
                     className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
@@ -711,20 +758,21 @@ export default function CalendarPage() {
                   <input
                     type="time"
                     value={form.endTime}
-                    onChange={e => setForm({ ...form, endTime: e.target.value })}
+                    onChange={e => setForm({ ...form, endTime: e.target.value, endEdited: true })}
                     className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-semibold outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-ink mb-1">Poltrona / Sincronizzazione</label>
+                <label htmlFor="event-source" className="block text-xs font-bold text-ink mb-1">Calendario</label>
                 <select
+                  id="event-source"
                   value={form.source}
                   onChange={e => setForm({ ...form, source: e.target.value as EventSource })}
                   className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink font-bold outline-none focus:border-accent focus:ring-1 focus:ring-accent cursor-pointer"
                 >
-                  <option value="Manual" className="text-ink font-semibold">Poltrona Studio (Manuale)</option>
+                  <option value="Manual" className="text-ink font-semibold">Manuale (studio)</option>
                   <option value="Google Calendar" disabled={!googleConnected} className="text-ink font-semibold">
                     Google Calendar Studio{googleConnected ? "" : " (non connesso)"}
                   </option>
@@ -737,11 +785,12 @@ export default function CalendarPage() {
               <AssetSelect value={form.assetId} onChange={assetId => setForm({ ...form, assetId })} />
 
               <div>
-                <label className="block text-xs font-bold text-ink mb-1">Note Cliniche & Materiali</label>
+                <label htmlFor="event-description" className="block text-xs font-bold text-ink mb-1">Note</label>
                 <textarea
+                  id="event-description"
                   value={form.description}
                   onChange={e => setForm({ ...form, description: e.target.value })}
-                  placeholder="Dettagli poltrona, anestetico, cartella clinica (opzionale)"
+                  placeholder="Dettagli e note (opzionale)"
                   rows={3}
                   className="w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink placeholder:text-ink-muted font-medium outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none"
                 />

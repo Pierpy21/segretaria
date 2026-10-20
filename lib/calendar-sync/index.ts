@@ -18,6 +18,7 @@ import {
   upsertExternalEvents,
 } from "@/lib/data/calendar";
 import { assertAssetInCompany } from "@/lib/data/assets";
+import { resolveActiveAppointmentType } from "@/lib/data/settings";
 import { withUser } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 
@@ -98,8 +99,9 @@ export async function createAgendaEvent(
   input: CreateCalendarEventInput,
 ): Promise<CalendarEventData> {
   // Bene verificato prima di toccare il provider remoto (nessun evento orfano).
-  const { assetId } = input;
+  const { assetId, appointmentTypeId } = input;
   if (assetId) await withUser((tx) => assertAssetInCompany(tx, companyId, assetId));
+  if (appointmentTypeId) await withUser((tx) => resolveActiveAppointmentType(tx, companyId, appointmentTypeId));
   const provider = providerOfSource(input.source);
   if (!provider) return withUser((tx) => createAgendaRow(tx, companyId, input));
 

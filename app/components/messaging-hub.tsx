@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Bot } from "lucide-react";
+import { useTerms } from "@/app/hooks/use-terms";
 import type { ChatListItem } from "@/app/types/messaging";
 
 interface MessagingHubProps {
@@ -9,6 +10,7 @@ interface MessagingHubProps {
 }
 
 export default function MessagingHub({ chats }: MessagingHubProps) {
+  const terms = useTerms();
   const [chatTab, setChatTab] = useState<"Tutte" | "Non lette" | "AI Attiva">("Tutte");
 
   const filteredChats =
@@ -21,8 +23,8 @@ export default function MessagingHub({ chats }: MessagingHubProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-line">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Centro Messaggi Pazienti</h2>
-          <p className="text-xs text-ink-muted">WhatsApp Studio & Triage AI</p>
+          <h2 className="text-sm font-semibold text-ink">Centro Messaggi {terms.clientPlural}</h2>
+          <p className="text-xs text-ink-muted">{terms.chatSubtitle}</p>
         </div>
         <button className="text-xs font-semibold text-accent-text hover:text-ink transition-colors">
           Vedi tutti →

@@ -8,6 +8,24 @@ export const SECTORS: Record<Sector, { label: string; badge: string; subtitle: s
     subtitle: "Studio Dentistico Smart AI",
     namePlaceholder: "Es. Studio Dentistico Dott. Rossi",
   },
+  medico: {
+    label: "Studio medico",
+    badge: "Med",
+    subtitle: "Studio Medico Smart AI",
+    namePlaceholder: "Es. Studio Medico Dott. Bianchi",
+  },
+  commercialista: {
+    label: "Commercialista",
+    badge: "Tax",
+    subtitle: "Studio Commercialista Smart AI",
+    namePlaceholder: "Es. Studio Commerciale Rossi & Associati",
+  },
+  legale: {
+    label: "Studio legale",
+    badge: "Legal",
+    subtitle: "Studio Legale Smart AI",
+    namePlaceholder: "Es. Studio Legale Avv. Verdi",
+  },
   estetico: {
     label: "Centro estetico",
     badge: "Beauty",

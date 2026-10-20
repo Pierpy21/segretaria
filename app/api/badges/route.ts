@@ -1,12 +1,12 @@
 import { apiOk, handleApiError } from "@/lib/api";
 import { getSidebarBadges } from "@/lib/data/badges";
 import type { SidebarBadges } from "@/app/types/api";
-import { hasPermission, type Permission } from "@/lib/auth/permissions";
+import { can, type Permission } from "@/lib/auth/permissions";
 import { withCompany } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-/** Contatore a 0 se il ruolo non ha il permesso della sezione collegata. */
+/** Contatore a 0 se l'utente non ha il permesso effettivo della sezione collegata. */
 const BADGE_PERMISSION: Record<keyof SidebarBadges, Permission> = {
   patients: "clients:read",
   chat: "chat:read",
@@ -17,14 +17,14 @@ const BADGE_PERMISSION: Record<keyof SidebarBadges, Permission> = {
 
 export async function GET() {
   try {
-    const { badges, role } = await withCompany(async (tx, { companyId, role }) => ({
-      badges: await getSidebarBadges(tx, companyId),
-      role,
+    const { badges, permissions } = await withCompany(async (tx, ctx) => ({
+      badges: await getSidebarBadges(tx, ctx.companyId),
+      permissions: ctx.permissions,
     }));
     const visible = Object.fromEntries(
       (Object.keys(BADGE_PERMISSION) as (keyof SidebarBadges)[]).map((k) => [
         k,
-        hasPermission(role, BADGE_PERMISSION[k]) ? badges[k] : 0,
+        can(permissions, BADGE_PERMISSION[k]) ? badges[k] : 0,
       ]),
     ) as unknown as SidebarBadges;
     return apiOk(visible);

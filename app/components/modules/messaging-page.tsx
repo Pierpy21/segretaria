@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Bot, Search, Send, Check, X, Sparkles, ArrowLeft, LoaderCircle } from "lucide-react";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { useTerms } from "@/app/hooks/use-terms";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import type { ChatListItem, Message } from "@/app/types/messaging";
@@ -21,6 +22,7 @@ export default function MessagingPage() {
   const chatsHook = useApiData<ChatListItem[]>("/api/conversations");
   const chats = chatsHook.data ?? [];
   const { mutate: mutateChats } = chatsHook;
+  const terms = useTerms();
 
   const [tab, setTab] = useState<ChatTab>("Tutte");
   const [search, setSearch] = useState("");
@@ -116,7 +118,7 @@ export default function MessagingPage() {
       }`}>
         <div className="px-4 py-4 border-b border-line">
           <h2 className="text-sm font-semibold text-ink">Chat & Comunicazioni</h2>
-          <p className="text-xs text-ink-muted mb-3">WhatsApp Studio — Evolution API</p>
+          <p className="text-xs text-ink-muted mb-3">{terms.chatSubtitle}</p>
           <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm bg-surface-muted border border-line focus-within:border-accent transition-colors">
             <Search size={13} className="text-ink-muted flex-shrink-0" />
             <input
@@ -124,7 +126,7 @@ export default function MessagingPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="bg-transparent outline-none flex-1 text-xs text-ink placeholder-ink-muted"
-              placeholder="Cerca paziente…"
+              placeholder={`Cerca ${terms.clientSingular.toLowerCase()}…`}
             />
           </div>
         </div>
@@ -268,7 +270,7 @@ export default function MessagingPage() {
             {pendingDraft && (
               <div className="mx-5 mb-4 rounded-2xl border border-dashed border-accent-soft bg-accent/5 p-4 flex-shrink-0">
                 <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold text-accent-text">
-                  <Sparkles size={12} /> Bozza generata dall&apos;AI Clinica — Triage e risposta (richiede approvazione)
+                  <Sparkles size={12} /> Bozza generata dall&apos;AI — risposta da approvare
                 </div>
 
                 <textarea

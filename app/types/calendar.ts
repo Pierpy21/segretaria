@@ -40,6 +40,8 @@ export interface CalendarEventData {
   externalId?: string;
   /** Bene del cliente collegato */
   assetId?: string | null;
+  /** Tipo di appuntamento dello studio (company_appointment_types) */
+  appointmentTypeId?: string | null;
 }
 
 export interface ReminderData {

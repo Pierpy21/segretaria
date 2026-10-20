@@ -1,4 +1,7 @@
+"use client";
+
 import { Filter, Eye, Pencil } from "lucide-react";
+import { useTerms } from "@/app/hooks/use-terms";
 
 // Interfaccia per il singolo elemento della tabella
 interface QuoteItem {
@@ -19,13 +22,14 @@ interface QuotesTableProps {
 }
 
 export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesTableProps) {
+  const terms = useTerms();
   return (
     <div className="bg-surface rounded-2xl overflow-hidden flex flex-col border border-line">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-line">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Piani di Cura & Preventivi</h2>
-          <p className="text-xs text-ink-muted">{data.length} piani di cura attivi</p>
+          <h2 className="text-sm font-semibold text-ink">{terms.quotePlural}</h2>
+          <p className="text-xs text-ink-muted">{data.length} {terms.quotePlural.toLowerCase()} attivi</p>
         </div>
         <button className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-surface-muted border border-line text-ink hover:bg-line transition-colors">
           <Filter size={11} /> Filtra
@@ -37,7 +41,7 @@ export default function QuotesTable({ data, statusMap, onView, onEdit }: QuotesT
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-surface-muted">
-              {["Paziente", "Trattamento", "Data", "Importo", "Stato", ""].map(h => (
+              {[terms.clientSingular, "Prestazione", "Data", "Importo", "Stato", ""].map(h => (
                 <th
                   key={h}
                   className="px-4 py-2.5 text-left font-bold text-ink-muted border-b border-line"

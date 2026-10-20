@@ -13,26 +13,6 @@ export interface InsuranceCardData {
   expiration: string;
 }
 
-export interface XRayFinding {
-  id: number;
-  toothNumber: string;
-  toothName: string;
-  xPercent: number; // 0-100% position on x-ray
-  yPercent: number;
-  issue: string;
-  severity: "high" | "medium" | "low";
-  notes: string;
-}
-
-export interface SelectedToothData {
-  number: string;
-  name: string;
-  status: string;
-  statusColor: string;
-  lastExamination: string;
-  aiNote: string;
-}
-
 export interface TreatmentHistoryItem {
   id: string;
   date: string;
@@ -44,7 +24,7 @@ export interface TreatmentHistoryItem {
 }
 
 /** Settore dello studio (companies.sector) = tipo cliente di default. */
-export type Sector = "dentale" | "estetico" | "generico";
+export type Sector = "dentale" | "medico" | "commercialista" | "legale" | "estetico" | "generico";
 export type ClientFieldType = "text" | "number" | "date" | "select" | "bool";
 /** Entità a cui appartiene una definizione: il cliente o un suo bene (client_assets). */
 export type FieldEntity = "client" | "asset";
@@ -77,12 +57,10 @@ export interface Client {
   fiscalCode: string;
   /** Tipo cliente (= settore di default dello studio, es. "dentale") */
   clientType: string;
-  /** Campi personalizzati non sensibili (+ sensibili se il ruolo ha clinical:read) */
+  /** Campi personalizzati non sensibili (+ sensibili se il permesso sensitive:read) */
   attributes: ClientAttributes;
   recommendation: string;
   insurance: InsuranceCardData;
   previousVisit: PreviousVisitNote;
-  selectedTooth: SelectedToothData;
-  xrayFindings: XRayFinding[];
   treatments: TreatmentHistoryItem[];
 }

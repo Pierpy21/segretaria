@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { useMe } from "@/app/hooks/use-me";
 import { INPUT_CLASS } from "@/app/components/modules/client-attributes-form";
 import type { ClientAssetOption } from "@/app/types/api";
 
@@ -13,12 +14,14 @@ export interface AssetSelectProps {
   clientName?: string;
 }
 
-/** Selettore facoltativo del bene. Non viene mostrato se lo studio non ha beni. */
+/** Selettore facoltativo del bene. Non viene mostrato se il modulo "assets" è spento o non ci sono beni. */
 export default function AssetSelect({ value, onChange, clientName = "" }: AssetSelectProps) {
   const id = useId();
-  const assetsHook = useApiData<ClientAssetOption[]>("/api/assets");
+  const { data: me } = useMe();
+  const enabled = me?.modules.assets === true;
+  const assetsHook = useApiData<ClientAssetOption[]>(enabled ? "/api/assets" : null);
   const assets = assetsHook.data ?? [];
-  if (assets.length === 0) return null;
+  if (!enabled || assets.length === 0) return null;
 
   const wanted = clientName.trim().toLowerCase();
   const sameClient = assets.filter(a => a.clientName.toLowerCase() === wanted);

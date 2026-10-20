@@ -9,6 +9,7 @@ import { ALL_DAY_LABEL } from "@/app/lib/calendar-dates";
 import { getCalendarTimeZone, parseToUtcMs } from "@/lib/calendar-sync/time";
 import { ValidationError } from "@/lib/errors";
 import { assertUuid, chunk, dateInZone, first, instantOf, timeInZone } from "./format";
+import { resolveActiveAppointmentType } from "./settings";
 
 const DAY_MS = 86_400_000;
 const DEFAULT_DURATION_MS = 3_600_000;
@@ -55,6 +56,7 @@ function toEventData(row: CalendarEvent, tz: string): CalendarEventData {
     isAiGenerated: row.isAiGenerated,
     externalId: row.externalId ?? undefined,
     assetId: row.assetId,
+    appointmentTypeId: row.appointmentTypeId,
   };
 }
 
@@ -93,6 +95,7 @@ export function resolveAgendaRange(
 /**
  * Salva un evento. Con `external` la riga è collegata al calendario remoto
  * (il provider va creato prima dal chiamante, vedi lib/calendar-sync).
+ * Tipo di appuntamento: deve essere attivo nello studio; senza `color` usa il suo colore.
  */
 export async function createEvent(
   tx: Tx,
@@ -111,6 +114,11 @@ export async function createEvent(
     ? external.provider === "google" ? "google_calendar" : "apple_calendar"
     : SOURCE_TO_DB[input.source];
 
+  // Il tipo è già verificato da lib/calendar-sync prima del provider remoto (qui è la seconda linea).
+  const appointmentType = input.appointmentTypeId
+    ? await resolveActiveAppointmentType(tx, companyId, input.appointmentTypeId)
+    : null;
+
   const inserted = await tx
     .insert(calendarEvents)
     .values({
@@ -120,12 +128,14 @@ export async function createEvent(
       startAt,
       endAt,
       allDay: false,
+      color: input.color ?? appointmentType?.color ?? null,
       source,
       isAiGenerated: input.source === "AI Secretary",
       externalProvider: external?.provider ?? null,
       externalId: external?.externalId ?? null,
       // Il bene è già verificato da lib/calendar-sync (assertAssetInCompany) prima del provider remoto.
       assetId: input.assetId ?? null,
+      appointmentTypeId: appointmentType?.id ?? null,
     })
     .returning();
   return toEventData(first(inserted, "insert calendar_events"), tz);

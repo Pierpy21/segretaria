@@ -9,14 +9,12 @@ import {
   MapPin,
   ChevronRight,
   Shield,
-  Sparkles,
   ArrowLeft,
   Plus,
   UserCheck,
   CheckCircle2,
   Clock,
   Printer,
-  SlidersHorizontal,
   LoaderCircle,
   X,
 } from "lucide-react";
@@ -24,7 +22,8 @@ import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { useMe } from "@/app/hooks/use-me";
-import { hasPermission } from "@/lib/auth/permissions";
+import { useTerms } from "@/app/hooks/use-terms";
+import { can } from "@/lib/auth/permissions";
 import { Skeleton, SkeletonRows, ErrorState } from "@/app/components/ui/async-state";
 import { SECTOR_OPTIONS } from "@/app/constants/sectors";
 import ClientAttributesForm from "@/app/components/modules/client-attributes-form";
@@ -85,8 +84,6 @@ function buildNewClient(f: ClientForm): CreateClientInput {
     recommendation: "",
     insurance: { provider: "Privato", policyNumber: "", type: "Nessuna", expiration: "" },
     previousVisit: { date: "", doctor: "", summary: "Nessuna visita precedente", details: "" },
-    selectedTooth: { number: "", name: "", status: "", statusColor: "#94a3b8", lastExamination: "", aiNote: "" },
-    xrayFindings: [],
     treatments: [],
   };
 }
@@ -104,14 +101,24 @@ function ClientAvatar({ client, className }: { client: Pick<ClientResponse, "nam
   );
 }
 
+/** Badge per le sezioni con dati sensibili (etichetta dalla terminologia dello studio) */
+function SensitiveTag({ label }: { label: string }) {
+  return (
+    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+      {label}
+    </span>
+  );
+}
+
 interface ClientAttributesCardProps {
   client: ClientResponse;
   canWrite: boolean;
+  canWriteSensitive: boolean;
   onSaved: (client: ClientResponse) => void;
 }
 
-/** Campi del settore: modificabili con clients:write, in sola lettura per gli altri ruoli. */
-function ClientAttributesCard({ client, canWrite, onSaved }: ClientAttributesCardProps) {
+/** Campi del settore: modificabili con clients:write (i sensibili con sensitive:write), in sola lettura per gli altri. */
+function ClientAttributesCard({ client, canWrite, canWriteSensitive, onSaved }: ClientAttributesCardProps) {
   const [draft, setDraft] = useState<ClientAttributes | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -153,6 +160,7 @@ function ClientAttributesCard({ client, canWrite, onSaved }: ClientAttributesCar
         values={draft ?? client.attributes}
         onChange={(key, value) => setDraft(d => ({ ...(d ?? client.attributes), [key]: value }))}
         readOnly={draft === null}
+        canEditSensitive={canWriteSensitive}
       />
 
       {draft && (
@@ -189,14 +197,16 @@ export default function ClientsPage() {
   const clientsHook = useApiData<ClientResponse[]>("/api/clients");
   const clients = clientsHook.data ?? [];
   const { data: me } = useMe();
-  // Le API omettono i campi clinici senza clinical:read: le sezioni cliniche restano nascoste
-  const canWrite = hasPermission(me?.role, "clients:write");
-  const canClinical = hasPermission(me?.role, "clinical:read");
+  const terms = useTerms();
+  // Le API omettono i dati sensibili senza sensitive:read: le sezioni sensibili restano nascoste
+  const canWrite = can(me?.permissions, "clients:write");
+  const canSensitive = can(me?.permissions, "sensitive:read");
+  const canWriteSensitive = can(me?.permissions, "sensitive:write");
+  const hasAssets = me?.modules.assets === true;
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"detail" | "list">("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [xrayInvert, setXrayInvert] = useState(false);
 
   const [showNewModal, setShowNewModal] = useState(false);
   const emptyForm: ClientForm = { ...EMPTY_FORM, clientType: me?.company?.sector ?? EMPTY_FORM.clientType };
@@ -268,7 +278,7 @@ export default function ClientsPage() {
     <div className="fixed inset-0 z-50 bg-sidebar/40 flex items-center justify-center p-4">
       <form onSubmit={submitClient} className="bg-surface rounded-2xl border border-line w-full max-w-md p-5 space-y-3.5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-2 border-b border-line">
-          <p className="text-sm font-bold text-ink">Nuovo Cliente</p>
+          <p className="text-sm font-bold text-ink">Nuovo {terms.clientSingular}</p>
           <button type="button" onClick={() => setShowNewModal(false)} className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted" aria-label="Chiudi">
             <X size={15} />
           </button>
@@ -361,6 +371,7 @@ export default function ClientsPage() {
               clientType={form.clientType}
               values={form.attributes}
               onChange={(key, value) => setForm(f => ({ ...f, attributes: { ...f.attributes, [key]: value } }))}
+              canEditSensitive={canWriteSensitive}
             />
           </div>
         </div>
@@ -379,7 +390,7 @@ export default function ClientsPage() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm disabled:opacity-60"
           >
             {submitting && <LoaderCircle size={12} className="animate-spin" />}
-            Salva Cliente
+            Salva {terms.clientSingular}
           </button>
         </div>
       </form>
@@ -408,7 +419,7 @@ export default function ClientsPage() {
               onClick={() => setViewMode("list")}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-ink bg-surface-muted hover:bg-line hover:text-accent-text border border-line-strong transition-all shadow-xs cursor-pointer"
             >
-              <ArrowLeft size={15} /> ← Torna all&apos;Elenco Clienti
+              <ArrowLeft size={15} /> ← Torna all&apos;Elenco {terms.clientPlural}
             </button>
           ) : (
             <div className="flex items-center gap-2.5">
@@ -416,8 +427,8 @@ export default function ClientsPage() {
                 <UserCheck size={18} />
               </div>
               <div>
-                <h2 className="text-base font-bold text-ink">Elenco Clienti Studio</h2>
-                <p className="text-xs text-ink-muted">{clients.length} clienti registrati — Seleziona un cliente per aprire la scheda</p>
+                <h2 className="text-base font-bold text-ink">Elenco {terms.clientPlural}</h2>
+                <p className="text-xs text-ink-muted">{clients.length} {terms.clientPlural.toLowerCase()} registrati — Seleziona una scheda per aprirla</p>
               </div>
             </div>
           )}
@@ -452,7 +463,7 @@ export default function ClientsPage() {
               onClick={openCreate}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover shadow-sm transition-colors"
             >
-              <Plus size={14} /> Nuovo Cliente
+              <Plus size={14} /> Nuovo {terms.clientSingular}
             </button>
           )}
         </div>
@@ -466,14 +477,14 @@ export default function ClientsPage() {
           <div className="mx-auto w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-3">
             <UserCheck size={20} className="text-accent" />
           </div>
-          <p className="text-sm font-semibold text-ink">Nessun cliente registrato</p>
-          <p className="text-xs text-ink-muted mt-1 mb-4">Aggiungi il primo cliente per aprire la sua scheda.</p>
+          <p className="text-sm font-semibold text-ink">Nessun {terms.clientSingular.toLowerCase()} registrato</p>
+          <p className="text-xs text-ink-muted mt-1 mb-4">Aggiungi il primo {terms.clientSingular.toLowerCase()} per aprire la sua scheda.</p>
           {canWrite && (
             <button
               onClick={openCreate}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-accent-ink bg-accent hover:bg-accent-hover"
             >
-              <Plus size={14} /> Aggiungi primo cliente
+              <Plus size={14} /> Aggiungi primo {terms.clientSingular.toLowerCase()}
             </button>
           )}
         </div>
@@ -523,7 +534,7 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-ink-muted mt-2 pt-2 border-t border-line">
                   <span className="font-medium text-ink-muted">{c.phone}</span>
-                  {canClinical && c.recommendation && (
+                  {canSensitive && c.recommendation && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 truncate max-w-[170px]">
                       {c.recommendation}
                     </span>
@@ -543,7 +554,7 @@ export default function ClientsPage() {
                   <th className="px-5 py-3">Data di Nascita</th>
                   <th className="px-5 py-3">Contatti</th>
                   <th className="px-5 py-3">Convenzione / Tessera</th>
-                  {canClinical && <th className="px-5 py-3">Stato Recall</th>}
+                  {canSensitive && <th className="px-5 py-3">{terms.sensitiveData}</th>}
                   <th className="px-5 py-3 text-right">Azione</th>
                 </tr>
               </thead>
@@ -576,7 +587,7 @@ export default function ClientsPage() {
                         <Shield size={10} /> {c.insurance.provider}
                       </span>
                     </td>
-                    {canClinical && (
+                    {canSensitive && (
                       <td className="px-5 py-3.5">
                         <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 max-w-[220px] truncate">
                           {c.recommendation}
@@ -609,17 +620,14 @@ export default function ClientsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4 items-start">
           {/* ══════════ LEFT COLUMN ══════════ */}
           <div className="space-y-3.5">
-            {canClinical && (
+            {canSensitive && (
             <div className="bg-surface rounded-2xl border border-line p-4 shadow-2xs hover:border-line-strong transition-all">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-surface-muted flex items-center justify-center text-ink">
                     <Calendar size={13} />
                   </div>
-                  <h4 className="text-xs font-bold text-ink">Previous visit note</h4>
-                </div>
-                <div className="w-8 h-8 rounded-lg overflow-hidden border border-line relative flex-shrink-0 bg-sidebar">
-                  <Image src="/dental-xray.png" alt="Xray mini" fill className="object-cover opacity-90" sizes="32px" />
+                  <h4 className="text-xs font-bold text-ink">Nota visita precedente <SensitiveTag label={terms.sensitiveData} /></h4>
                 </div>
               </div>
               <p className="text-xs font-normal text-ink-muted leading-relaxed mb-2.5">
@@ -691,11 +699,19 @@ export default function ClientsPage() {
               key={currentClient.id}
               client={currentClient}
               canWrite={canWrite}
+              canWriteSensitive={canWriteSensitive}
               onSaved={handleClientSaved}
             />
 
-            {/* 3b. Beni del cliente (sezione mostrata solo se lo studio ha campi per i beni) */}
-            <ClientAssetsSection key={currentClient.id} clientId={currentClient.id} canWrite={canWrite} />
+            {/* 3b. Beni del cliente (modulo "assets" attivo; la sezione non si mostra se lo studio non ha campi per i beni) */}
+            {hasAssets && (
+              <ClientAssetsSection
+                key={currentClient.id}
+                clientId={currentClient.id}
+                canWrite={canWrite}
+                canWriteSensitive={canWriteSensitive}
+              />
+            )}
 
             {/* 4. Insurance Card */}
             <div className="bg-surface rounded-2xl border border-line p-4 shadow-2xs overflow-hidden">
@@ -725,109 +741,20 @@ export default function ClientsPage() {
               </button>
             </div>
 
-            {canClinical && (
-            <div className="bg-surface rounded-2xl border border-line p-4 shadow-2xs">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs font-bold text-ink">
-                  {currentClient.selectedTooth?.number || "Nessun dente"} Selected
-                </h4>
-                {currentClient.selectedTooth?.status && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/10 text-accent-text border border-accent-soft">
-                    {currentClient.selectedTooth.status}
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-[1fr_110px] gap-3 items-center">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted mb-0.5">
-                    Last Examination
-                  </p>
-                  <p className="text-xs font-bold text-ink mb-2.5">
-                    {currentClient.selectedTooth?.lastExamination || "—"}
-                  </p>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-ink">
-                      <Sparkles size={11} className="text-accent-text" />
-                      <span>AI Note</span>
-                    </div>
-                    <p className="text-[11px] text-ink-muted leading-snug">
-                      {currentClient.selectedTooth?.aiNote || "Nessuna nota AI."}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Dental arch graphic */}
-                <div className="relative w-[110px] h-[100px] flex items-center justify-center p-1 rounded-xl bg-surface-muted border border-line">
-                  <Image
-                    src="/dental-arch.png"
-                    alt="Dental arch"
-                    width={100}
-                    height={90}
-                    className="object-contain"
-                  />
-                </div>
-              </div>
-            </div>
-            )}
           </div>
 
           {/* ══════════ RIGHT COLUMN ══════════ */}
-          {canClinical && (
+          {canSensitive && (
           <div className="space-y-4 min-w-0">
-            {/* Dental Panoramic X-Ray Viewer */}
-            <div className="bg-sidebar rounded-2xl border border-sidebar-hover overflow-hidden shadow-md flex flex-col">
-              {/* X-Ray Header Controls */}
-              <div className="px-5 py-3 border-b border-sidebar-hover bg-sidebar flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <p className="text-xs font-bold text-sidebar-ink">Ortopanoramica Digitale 2D (OPT)</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setXrayInvert(!xrayInvert)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-sidebar-ink bg-sidebar-hover hover:bg-sidebar-hover/70 transition-colors"
-                  >
-                    <SlidersHorizontal size={11} /> {xrayInvert ? "Filtro Positivo" : "Inverti Contrasto"}
-                  </button>
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-accent/20 text-accent border border-accent/50">
-                    HD 4K
-                  </span>
-                </div>
-              </div>
-
-              {/* X-Ray Display Area without markers */}
-              <div
-                className={`relative w-full aspect-[609/363] overflow-hidden select-none bg-black transition-all ${
-                  xrayInvert ? "invert" : ""
-                }`}
-              >
-                <Image
-                  src="/dental-xray.png"
-                  alt="Dental Panoramic X-Ray"
-                  fill
-                  priority
-                  className="object-cover"
-                />
-              </div>
-
-              {/* X-Ray footer findings summary */}
-              <div className="px-5 py-2.5 bg-sidebar/90 border-t border-sidebar-hover text-[11px] text-sidebar-ink-muted flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  Ortopanoramica Digitale Completa (OPT) — Arcata Superiore & Inferiore
-                </span>
-                <span className="text-sidebar-ink-muted">Sensore CMOS Carestream CS 8100 3D</span>
-              </div>
-            </div>
 
             {/* Storico Prestazioni Cliniche & Prossimi Trattamenti */}
             <div className="bg-surface rounded-2xl border border-line p-5 shadow-2xs">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-sm font-bold text-ink">Prestazioni Cliniche & Piano di Cura</h3>
-                  <p className="text-xs text-ink-muted">Storico trattamenti eseguiti e sedute programmate</p>
+                  <h3 className="text-sm font-bold text-ink">
+                    Prestazioni & {terms.quotePlural} <SensitiveTag label={terms.sensitiveData} />
+                  </h3>
+                  <p className="text-xs text-ink-muted">Storico delle prestazioni eseguite e degli appuntamenti programmati</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-ink bg-surface-muted border border-line-strong hover:bg-line">
@@ -847,8 +774,8 @@ export default function ClientsPage() {
                     <thead className="bg-surface-muted border-y border-line text-ink font-bold">
                       <tr>
                         <th className="px-4 py-2.5">Data</th>
-                        <th className="px-4 py-2.5">Trattamento Odontoiatrico</th>
-                        <th className="px-4 py-2.5">Operatore Clinico</th>
+                        <th className="px-4 py-2.5">Prestazione</th>
+                        <th className="px-4 py-2.5">Operatore</th>
                         <th className="px-4 py-2.5">Importo</th>
                         <th className="px-4 py-2.5">Stato</th>
                       </tr>

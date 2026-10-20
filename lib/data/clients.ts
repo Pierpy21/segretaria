@@ -21,35 +21,38 @@ import { ageFrom, formatItalianLong, initialsOf, parseDateInput } from "./format
 
 const MAX_CODE_ATTEMPTS = 5;
 
-const CLINICAL_KEYS: readonly ClinicalClientKey[] = [
+/** Campi sensibili del cliente (ex clinici): vivono in client_clinical. */
+const SENSITIVE_CLIENT_KEYS: readonly ClinicalClientKey[] = [
   "recommendation",
   "previousVisit",
-  "selectedTooth",
-  "xrayFindings",
   "treatments",
 ];
 
-type ClinicalFields = Omit<NewClientClinicalRow, "clientId" | "companyId" | "attributes" | "createdAt" | "updatedAt">;
+/** Permessi sui dati sensibili del richiedente (sensitive:read / sensitive:write). */
+export interface SensitiveAccess {
+  read: boolean;
+  write: boolean;
+}
 
-const EMPTY_CLINICAL = {
+type SensitiveFields = Omit<NewClientClinicalRow, "clientId" | "companyId" | "attributes" | "createdAt" | "updatedAt">;
+
+const EMPTY_SENSITIVE = {
   recommendation: "",
   previousVisit: {},
-  selectedTooth: {},
-  xrayFindings: [],
   treatments: [],
-} as unknown as Required<ClinicalFields>;
+} as unknown as Required<SensitiveFields>;
 
 /**
- * I dati clinici stanno in client_clinical (RLS: negati ad accountant).
- * `clinical` = il ruolo ha clinical:read: solo allora la tabella è letta e i campi inclusi
+ * I dati sensibili stanno in client_clinical (RLS: sensitive:read / sensitive:write).
+ * `sensitiveRead` = il richiedente ha sensitive:read: solo allora i campi sensibili sono inclusi
  * (anche gli attributi sensibili, uniti a quelli non sensibili).
  */
 function toClient(
   row: ClientRow,
-  clinicalRow: ClientClinicalRow | null,
+  sensitiveRow: ClientClinicalRow | null,
   now: Date,
   tz: string,
-  clinical: boolean,
+  sensitiveRead: boolean,
 ): ClientResponse {
   const view: ClientResponse = {
     id: row.code,
@@ -67,14 +70,12 @@ function toClient(
     attributes: row.attributes,
     insurance: row.insurance,
   };
-  if (clinical) {
-    const c = clinicalRow ?? EMPTY_CLINICAL;
-    view.attributes = { ...row.attributes, ...clinicalRow?.attributes };
-    view.recommendation = c.recommendation;
-    view.previousVisit = c.previousVisit;
-    view.selectedTooth = c.selectedTooth;
-    view.xrayFindings = c.xrayFindings;
-    view.treatments = c.treatments;
+  if (sensitiveRead) {
+    const s = sensitiveRow ?? EMPTY_SENSITIVE;
+    view.attributes = { ...row.attributes, ...sensitiveRow?.attributes };
+    view.recommendation = s.recommendation;
+    view.previousVisit = s.previousVisit;
+    view.treatments = s.treatments;
   }
   return view;
 }
@@ -94,14 +95,14 @@ function toDefinition(row: ClientFieldDefinitionRow): ClientFieldDefinition {
 
 /**
  * Definizioni dei campi dello studio, ordinate per position.
- * `clinical` = il ruolo ha clinical:read: senza, le definizioni sensibili sono escluse.
+ * `sensitiveRead` = sensitive:read: senza, le definizioni sensibili sono escluse.
  * `entity` = 'client' (default) per i campi cliente, 'asset' per i campi dei beni (clientType = asset_type).
  */
 export async function listFieldDefinitions(
   tx: Tx,
   companyId: string,
   clientType: string | undefined,
-  clinical: boolean,
+  sensitiveRead: boolean,
   entity: FieldEntity = "client",
 ): Promise<ClientFieldDefinition[]> {
   const conds: SQL[] = [
@@ -109,7 +110,7 @@ export async function listFieldDefinitions(
     eq(clientFieldDefinitions.entity, entity),
   ];
   if (clientType) conds.push(eq(clientFieldDefinitions.clientType, clientType));
-  if (!clinical) conds.push(eq(clientFieldDefinitions.sensitive, false));
+  if (!sensitiveRead) conds.push(eq(clientFieldDefinitions.sensitive, false));
   const rows = await tx
     .select()
     .from(clientFieldDefinitions)
@@ -121,14 +122,13 @@ export async function listFieldDefinitions(
 /**
  * Valida gli attributi con le definizioni del tipo cliente (tutte, anche le sensibili)
  * e li separa: sensitive → client_clinical.attributes, altri → clients.attributes.
- * Chiavi sensibili senza clinical:read → ForbiddenError.
+ * Nessun controllo di permesso qui: lo fa il chiamante.
  */
 async function splitAttributes(
   tx: Tx,
   companyId: string,
   clientType: string,
   raw: ClientAttributes | undefined,
-  clinical: boolean,
   partial: boolean,
 ): Promise<{ pub: ClientAttributes; sens: ClientAttributes }> {
   const defs = await listFieldDefinitions(tx, companyId, clientType, true);
@@ -140,10 +140,15 @@ async function splitAttributes(
     if (sensitiveKeys.has(key)) sens[key] = v;
     else pub[key] = v;
   }
-  if (!clinical && Object.keys(sens).length > 0) {
-    throw new ForbiddenError("Campi clinici non consentiti per il tuo ruolo");
-  }
   return { pub, sens };
+}
+
+/** Il input contiene dati sensibili (attributi o campi sensibili con contenuto)? */
+function hasSensitiveData(input: CreateClientInput, sens: ClientAttributes): boolean {
+  return Object.keys(sens).length > 0
+    || (input.recommendation ?? "").trim() !== ""
+    || Object.values(input.previousVisit).some((v) => v !== "")
+    || input.treatments.length > 0;
 }
 
 function parseBirthDate(input: string): string {
@@ -164,21 +169,21 @@ function newClientCode(now: Date): string {
   return `PT-${now.getFullYear()}-${seq}`;
 }
 
-export async function listClients(tx: Tx, companyId: string, clinical: boolean): Promise<ClientResponse[]> {
+export async function listClients(tx: Tx, companyId: string, sensitiveRead: boolean): Promise<ClientResponse[]> {
   const now = new Date();
   const tz = getCalendarTimeZone();
   const where = eq(clients.companyId, companyId);
-  if (!clinical) {
+  if (!sensitiveRead) {
     const rows = await tx.select().from(clients).where(where).orderBy(asc(clients.name));
     return rows.map((row) => toClient(row, null, now, tz, false));
   }
   const rows = await tx
-    .select({ client: clients, clinical: clientClinical })
+    .select({ client: clients, sensitive: clientClinical })
     .from(clients)
     .leftJoin(clientClinical, eq(clientClinical.clientId, clients.id))
     .where(where)
     .orderBy(asc(clients.name));
-  return rows.map((r) => toClient(r.client, r.clinical, now, tz, true));
+  return rows.map((r) => toClient(r.client, r.sensitive, now, tz, true));
 }
 
 /** `code` è l'id applicativo del cliente (es. "PT-2026-0142"). */
@@ -186,7 +191,7 @@ export async function getClient(
   tx: Tx,
   companyId: string,
   code: string,
-  clinical: boolean,
+  sensitiveRead: boolean,
 ): Promise<ClientResponse | null> {
   const now = new Date();
   const tz = getCalendarTimeZone();
@@ -197,10 +202,10 @@ export async function getClient(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return toClient(row, clinical ? await getClinicalRow(tx, row.id) : null, now, tz, clinical);
+  return toClient(row, sensitiveRead ? await getSensitiveRow(tx, row.id) : null, now, tz, sensitiveRead);
 }
 
-async function getClinicalRow(tx: Tx, clientId: string): Promise<ClientClinicalRow | null> {
+async function getSensitiveRow(tx: Tx, clientId: string): Promise<ClientClinicalRow | null> {
   const rows = await tx
     .select()
     .from(clientClinical)
@@ -210,6 +215,8 @@ async function getClinicalRow(tx: Tx, clientId: string): Promise<ClientClinicalR
 }
 
 /**
+ * Crea il cliente. Senza sensitive:write nasce senza riga client_clinical; con dati sensibili
+ * nel corpo (attributi o campi con contenuto) serve sensitive:write → ForbiddenError.
  * Il retry sul codice casuale usa ON CONFLICT DO NOTHING (non un errore 23505):
  * un errore abortirebbe la transazione, il DO NOTHING no. Stessa tx, nessun round-trip extra.
  */
@@ -217,13 +224,14 @@ export async function createClient(
   tx: Tx,
   companyId: string,
   input: CreateClientInput,
-  clinical: boolean,
+  access: SensitiveAccess,
 ): Promise<ClientResponse> {
-  // Creare un cliente comporta sempre dati clinici (anche vuoti): richiede clinical:read.
-  if (!clinical) throw new ForbiddenError("Creazione cliente non consentita per il tuo ruolo");
   const now = new Date();
   const tz = getCalendarTimeZone();
-  const { pub, sens } = await splitAttributes(tx, companyId, input.clientType, input.attributes, clinical, false);
+  const { pub, sens } = await splitAttributes(tx, companyId, input.clientType, input.attributes, false);
+  if (!access.write && hasSensitiveData(input, sens)) {
+    throw new ForbiddenError("Dati sensibili non consentiti per il tuo ruolo");
+  }
   const values = {
     companyId,
     clientType: input.clientType,
@@ -238,11 +246,9 @@ export async function createClient(
     fiscalCode: input.fiscalCode ?? "",
     insurance: input.insurance,
   };
-  const clinicalValues: ClinicalFields & { attributes: ClientAttributes } = {
+  const sensitiveValues: SensitiveFields & { attributes: ClientAttributes } = {
     recommendation: input.recommendation ?? "",
     previousVisit: input.previousVisit,
-    selectedTooth: input.selectedTooth,
-    xrayFindings: input.xrayFindings,
     treatments: input.treatments,
     attributes: sens,
   };
@@ -255,26 +261,33 @@ export async function createClient(
       .returning();
     const row = inserted[0];
     if (row) {
-      const [clinicalRow] = await tx
-        .insert(clientClinical)
-        .values({ ...clinicalValues, clientId: row.id, companyId })
-        .returning();
-      return toClient(row, clinicalRow, now, tz, clinical);
+      let sensitiveRow: ClientClinicalRow | null = null;
+      if (access.write) {
+        const [created] = await tx
+          .insert(clientClinical)
+          .values({ ...sensitiveValues, clientId: row.id, companyId })
+          .returning();
+        sensitiveRow = created ?? null;
+      }
+      return toClient(row, sensitiveRow, now, tz, access.read);
     }
   }
   throw new ConflictError("Impossibile generare un codice cliente univoco, riprova");
 }
 
-/** Gli attributi del patch sono uniti (non sostituiti): chiave a `null` = svuotata. */
+/**
+ * Gli attributi del patch sono uniti (non sostituiti): chiave a `null` = svuotata.
+ * Campi sensibili e attributi sensibili richiedono sensitive:write.
+ */
 export async function updateClient(
   tx: Tx,
   companyId: string,
   code: string,
   patch: Partial<CreateClientInput>,
-  clinical: boolean,
+  access: SensitiveAccess,
 ): Promise<ClientResponse> {
-  if (!clinical && CLINICAL_KEYS.some((k) => patch[k] !== undefined)) {
-    throw new ForbiddenError("Modifica dei dati clinici non consentita per il tuo ruolo");
+  if (!access.write && SENSITIVE_CLIENT_KEYS.some((k) => patch[k] !== undefined)) {
+    throw new ForbiddenError("Modifica dei dati sensibili non consentita per il tuo ruolo");
   }
   const now = new Date();
   const tz = getCalendarTimeZone();
@@ -285,7 +298,10 @@ export async function updateClient(
     .where(and(eq(clients.companyId, companyId), eq(clients.code, code)))
     .limit(1);
   if (!current) throw new NotFoundError("Cliente non trovato");
-  const { pub, sens } = await splitAttributes(tx, companyId, current.clientType, patch.attributes, clinical, true);
+  const { pub, sens } = await splitAttributes(tx, companyId, current.clientType, patch.attributes, true);
+  if (!access.write && Object.keys(sens).length > 0) {
+    throw new ForbiddenError("Attributi sensibili non consentiti per il tuo ruolo");
+  }
 
   const set: Omit<Partial<NewClientRow>, "attributes"> & { attributes?: ClientAttributes | SQL } = { updatedAt: now };
   if (patch.name !== undefined) set.name = assertName(patch.name);
@@ -301,12 +317,10 @@ export async function updateClient(
     set.attributes = sql`${clients.attributes} || ${JSON.stringify(pub)}::jsonb`;
   }
 
-  const clinicalSet: ClinicalFields = {};
-  if (patch.recommendation !== undefined) clinicalSet.recommendation = patch.recommendation;
-  if (patch.previousVisit !== undefined) clinicalSet.previousVisit = patch.previousVisit;
-  if (patch.selectedTooth !== undefined) clinicalSet.selectedTooth = patch.selectedTooth;
-  if (patch.xrayFindings !== undefined) clinicalSet.xrayFindings = patch.xrayFindings;
-  if (patch.treatments !== undefined) clinicalSet.treatments = patch.treatments;
+  const sensitiveSet: SensitiveFields = {};
+  if (patch.recommendation !== undefined) sensitiveSet.recommendation = patch.recommendation;
+  if (patch.previousVisit !== undefined) sensitiveSet.previousVisit = patch.previousVisit;
+  if (patch.treatments !== undefined) sensitiveSet.treatments = patch.treatments;
 
   const updated = await tx
     .update(clients)
@@ -315,26 +329,32 @@ export async function updateClient(
     .returning();
   const row = updated[0];
   if (!row) throw new NotFoundError("Cliente non trovato");
-  if (!clinical) return toClient(row, null, now, tz, false);
 
-  // Upsert: un cliente senza riga clinica (es. inserito fuori dall'app) la ottiene qui.
+  // Senza sensitive:write nessuna scrittura su client_clinical: solo lettura (se consentita).
+  if (!access.write) {
+    return toClient(row, access.read ? await getSensitiveRow(tx, row.id) : null, now, tz, access.read);
+  }
+
+  // Upsert: un cliente senza riga sensibile (es. inserito fuori dall'app) la ottiene qui.
   const hasSens = Object.keys(sens).length > 0;
-  const hasClinical = Object.keys(clinicalSet).length > 0 || hasSens;
-  const clinicalRow = hasClinical
-    ? (
-        await tx
-          .insert(clientClinical)
-          .values({ ...clinicalSet, attributes: sens, clientId: row.id, companyId })
-          .onConflictDoUpdate({
-            target: clientClinical.clientId,
-            set: {
-              ...clinicalSet,
-              ...(hasSens ? { attributes: sql`${clientClinical.attributes} || ${JSON.stringify(sens)}::jsonb` } : {}),
-              updatedAt: now,
-            },
-          })
-          .returning()
-      )[0]
-    : await getClinicalRow(tx, row.id);
-  return toClient(row, clinicalRow, now, tz, true);
+  const hasSensitive = Object.keys(sensitiveSet).length > 0 || hasSens;
+  let sensitiveRow: ClientClinicalRow | null;
+  if (hasSensitive) {
+    const [upserted] = await tx
+      .insert(clientClinical)
+      .values({ ...sensitiveSet, attributes: sens, clientId: row.id, companyId })
+      .onConflictDoUpdate({
+        target: clientClinical.clientId,
+        set: {
+          ...sensitiveSet,
+          ...(hasSens ? { attributes: sql`${clientClinical.attributes} || ${JSON.stringify(sens)}::jsonb` } : {}),
+          updatedAt: now,
+        },
+      })
+      .returning();
+    sensitiveRow = upserted ?? null;
+  } else {
+    sensitiveRow = access.read ? await getSensitiveRow(tx, row.id) : null;
+  }
+  return toClient(row, sensitiveRow, now, tz, access.read);
 }

@@ -1,20 +1,24 @@
 import "server-only";
 import { cache } from "react";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { withRLS, type Tx, type VerifiedClaims } from "@/lib/system/rls";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { companies, companyMembers } from "@/drizzle/schema";
+import { companies, companyMembers, companyModules, companyRoles } from "@/drizzle/schema";
 import * as schema from "@/drizzle/schema";
 import type { CompanyRole, MeResponse } from "@/app/types/api";
+import type { CompanyModules, ModuleKey, Terms } from "@/app/types/settings";
+import type { Sector } from "@/app/types/clients";
 import {
-  ROLE_PERMISSIONS,
+  DEFAULT_MODULES,
+  can,
+  effectivePermissions,
   homePathFor,
-  hasPermission,
   profileOf,
   type AccessProfile,
   type Permission,
 } from "@/lib/auth/permissions";
-import { ForbiddenError } from "@/lib/errors";
+import { resolveTerms, roleTitle } from "@/lib/terms";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 
 export { schema };
 export type { Tx };
@@ -40,6 +44,9 @@ export interface CompanyContext {
   user: AuthUser;
   companyId: string;
   role: CompanyRole;
+  /** Permessi effettivi (ruolo o ruolo personalizzato, filtrati dai moduli attivi) */
+  permissions: Permission[];
+  modules: CompanyModules;
 }
 
 /** Contesto fornito a withCompany: tutto ciò che serve alle query dello studio. */
@@ -47,6 +54,8 @@ export interface CompanyTxContext {
   userId: string;
   companyId: string;
   role: CompanyRole;
+  permissions: Permission[];
+  modules: CompanyModules;
 }
 
 /**
@@ -82,27 +91,82 @@ export async function withUser<T>(cb: (tx: Tx) => Promise<T>): Promise<T> {
   return withRLS(claimsOf(user), cb);
 }
 
-/** Primo studio dell'utente (più vecchio) letto nella transazione già aperta. */
-async function selectMembership(tx: Tx, userId: string) {
+/** Membership dell'utente nel primo studio (più vecchio), con permessi effettivi e moduli. */
+export interface MembershipData {
+  companyId: string;
+  name: string;
+  slug: string;
+  sector: Sector;
+  templateVersion: number | null;
+  terms: Terms;
+  role: CompanyRole;
+  customRole: { id: string; label: string } | null;
+  modules: CompanyModules;
+  permissions: Permission[];
+}
+
+/**
+ * Primo studio dell'utente letto nella transazione già aperta. Due query nella stessa tx:
+ * membership + ruolo personalizzato (left join), poi i moduli dello studio.
+ */
+async function selectMembership(tx: Tx, userId: string): Promise<MembershipData | null> {
   const rows = await tx
     .select({
       companyId: companies.id,
       name: companies.name,
       slug: companies.slug,
       sector: companies.sector,
+      templateVersion: companies.templateVersion,
+      terms: companies.terms,
       role: companyMembers.role,
+      customRoleId: companyMembers.customRoleId,
+      customRoleLabel: companyRoles.label,
+      customRolePermissions: companyRoles.permissions,
     })
     .from(companyMembers)
     .innerJoin(companies, eq(companies.id, companyMembers.companyId))
+    .leftJoin(
+      companyRoles,
+      and(
+        eq(companyRoles.id, companyMembers.customRoleId),
+        eq(companyRoles.companyId, companyMembers.companyId),
+      ),
+    )
     .where(eq(companyMembers.userId, userId))
     .orderBy(asc(companyMembers.createdAt))
     .limit(1);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+
+  const moduleRows = await tx
+    .select({ module: companyModules.module, enabled: companyModules.enabled })
+    .from(companyModules)
+    .where(eq(companyModules.companyId, row.companyId));
+  const modules: CompanyModules = { ...DEFAULT_MODULES };
+  for (const m of moduleRows) modules[m.module as ModuleKey] = m.enabled;
+
+  const role = row.role as CompanyRole;
+  // Ruolo personalizzato assegnato: i suoi permessi sostituiscono quelli di sistema.
+  const customPermissions = row.customRoleId ? (row.customRolePermissions ?? []) : null;
+  return {
+    companyId: row.companyId,
+    name: row.name,
+    slug: row.slug,
+    sector: row.sector,
+    templateVersion: row.templateVersion,
+    terms: resolveTerms(row.terms),
+    role,
+    customRole: row.customRoleId && row.customRoleLabel
+      ? { id: row.customRoleId, label: row.customRoleLabel }
+      : null,
+    modules,
+    permissions: effectivePermissions(role, customPermissions, modules),
+  };
 }
 
 /**
  * UNICO punto di accesso ai dati dello studio dalle route: UNA sola transazione RLS
- * che risolve la membership (1 query) e poi esegue cb con tx e contesto dello studio.
+ * che risolve la membership (query) e poi esegue cb con tx e contesto dello studio.
  * Lancia UnauthorizedError (401) o NoCompanyError (409).
  */
 export async function withCompany<T>(
@@ -112,7 +176,13 @@ export async function withCompany<T>(
   return withRLS(claimsOf(user), async (tx) => {
     const m = await selectMembership(tx, user.id);
     if (!m) throw new NoCompanyError();
-    return cb(tx, { userId: user.id, companyId: m.companyId, role: m.role as CompanyRole });
+    return cb(tx, {
+      userId: user.id,
+      companyId: m.companyId,
+      role: m.role,
+      permissions: m.permissions,
+      modules: m.modules,
+    });
   });
 }
 
@@ -120,15 +190,37 @@ export async function withCompany<T>(
 export const getMe = cache(async (): Promise<MeResponse> => {
   const user = await getVerifiedUser();
   const m = await withUser((tx) => selectMembership(tx, user.id));
-  const role = m ? (m.role as CompanyRole) : null;
+  if (!m) {
+    return {
+      user,
+      company: null,
+      role: null,
+      profile: null,
+      permissions: [],
+      terms: resolveTerms(null),
+      modules: { ...DEFAULT_MODULES },
+      customRole: null,
+      roleTitle: null,
+    };
+  }
+  const terms = m.terms;
   return {
     user,
-    company: m
-      ? { id: m.companyId, name: m.name, slug: m.slug, sector: m.sector, role: m.role as CompanyRole }
-      : null,
-    role,
-    profile: role ? profileOf(role) : null,
-    permissions: role ? [...ROLE_PERMISSIONS[role]] : [],
+    company: {
+      id: m.companyId,
+      name: m.name,
+      slug: m.slug,
+      sector: m.sector,
+      role: m.role,
+      templateVersion: m.templateVersion,
+    },
+    role: m.role,
+    profile: profileOf(m.role),
+    permissions: m.permissions,
+    terms,
+    modules: m.modules,
+    customRole: m.customRole,
+    roleTitle: roleTitle(terms, m.role, m.customRole?.label),
   };
 });
 
@@ -141,11 +233,17 @@ export const requireCompany = cache(async (): Promise<CompanyContext> => {
   const user = await getVerifiedUser();
   const m = await withUser((tx) => selectMembership(tx, user.id));
   if (!m) throw new NoCompanyError();
-  return { user, companyId: m.companyId, role: m.role as CompanyRole };
+  return {
+    user,
+    companyId: m.companyId,
+    role: m.role,
+    permissions: m.permissions,
+    modules: m.modules,
+  };
 });
 
 /**
- * Come withCompany, ma la callback viene eseguita solo se il ruolo ha il permesso.
+ * Come withCompany, ma la callback viene eseguita solo se l'utente ha il permesso effettivo.
  * Uso dichiarativo nelle route: withPermission("quotes:write", (tx, { companyId }) => ...).
  * Lancia ForbiddenError (403 FORBIDDEN) prima di qualunque query dati.
  */
@@ -154,7 +252,23 @@ export function withPermission<T>(
   cb: (tx: Tx, ctx: CompanyTxContext) => Promise<T>
 ): Promise<T> {
   return withCompany((tx, ctx) => {
-    if (!hasPermission(ctx.role, permission)) throw new ForbiddenError();
+    if (!can(ctx.permissions, permission)) throw new ForbiddenError();
+    return cb(tx, ctx);
+  });
+}
+
+/**
+ * Come withPermission, ma prima verifica che il modulo sia attivo: modulo spento → 404
+ * (la funzionalità non esiste per lo studio). `permission` null per moduli senza permessi.
+ */
+export function withModule<T>(
+  module: ModuleKey,
+  permission: Permission | null,
+  cb: (tx: Tx, ctx: CompanyTxContext) => Promise<T>
+): Promise<T> {
+  return withCompany((tx, ctx) => {
+    if (!ctx.modules[module]) throw new NotFoundError("Modulo non attivo");
+    if (permission && !can(ctx.permissions, permission)) throw new ForbiddenError();
     return cb(tx, ctx);
   });
 }
@@ -162,15 +276,17 @@ export function withPermission<T>(
 /** Come requireCompany, con controllo del permesso (per route senza query dati, es. OAuth/provider). */
 export async function requirePermission(permission: Permission): Promise<CompanyContext> {
   const ctx = await requireCompany();
-  if (!hasPermission(ctx.role, permission)) throw new ForbiddenError();
+  if (!can(ctx.permissions, permission)) throw new ForbiddenError();
   return ctx;
 }
 
 export interface Membership extends CompanyContext {
   profile: AccessProfile;
-  permissions: Permission[];
   /** Pagina iniziale del ruolo ("/" oppure "/contabile") */
   homePath: string;
+  terms: Terms;
+  customRole: { id: string; label: string } | null;
+  roleTitle: string;
 }
 
 /**
@@ -185,8 +301,12 @@ export const getCurrentMembership = cache(async (): Promise<Membership | null> =
     user: me.user,
     companyId: me.company.id,
     role: me.role,
-    profile: profileOf(me.role),
     permissions: me.permissions,
+    modules: me.modules,
+    profile: profileOf(me.role),
     homePath: homePathFor(me.role),
+    terms: me.terms,
+    customRole: me.customRole,
+    roleTitle: me.roleTitle ?? me.terms.ownerTitle,
   };
 });

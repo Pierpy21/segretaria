@@ -5,12 +5,12 @@
 //   403 { success:false, error:"FORBIDDEN" }     → ruolo senza il permesso richiesto
 // Tutti gli id delle entità sono UUID string.
 
-import type { CalendarEventData, EventSource, ReminderData, ReminderPriority, ReminderStatus } from "./calendar";
+import type { EventSource, ReminderPriority, ReminderStatus } from "./calendar";
 import type { Task, ColumnId, TaskPriority } from "./maintenance";
-import type { ChatListItem, Message, MessageFrom } from "./messaging";
-import type { Quote, QuoteStatus } from "./quotes";
+import type { MessageFrom } from "./messaging";
 import type { Client, ClientAttributeValue, ClientAttributes, ClientFieldDefinition, ClientFieldType, FieldEntity, Sector } from "./clients";
 import type { AccessProfile, Permission } from "@/lib/auth/permissions";
+import type { AppointmentType, CompanyModules, CustomRole, Terms, VerticalTemplateSummary } from "./settings";
 
 export type { ApiResult } from "./calendar-sync";
 
@@ -25,15 +25,26 @@ export const API_ERROR = {
 // POST /api/onboarding        body OnboardingInput → MeResponse["company"]
 // Login/registrazione: client Supabase lato browser (lib/supabase/client.ts),
 // conferma email su GET /auth/callback?code=... → redirect "/".
-// owner/admin = dottore (accesso completo); member = staff; accountant = assistente contabile.
+// owner/admin = titolare (accesso completo); member = staff; accountant = assistente contabile.
 export type CompanyRole = "owner" | "admin" | "member" | "accountant";
 export interface MeResponse {
   user: { id: string; email: string | null };
-  company: { id: string; name: string; slug: string; sector: Sector; role: CompanyRole } | null;
+  company: {
+    id: string; name: string; slug: string; sector: Sector; role: CompanyRole;
+    /** Versione del preset di settore applicata (null se mai applicato) */
+    templateVersion: number | null;
+  } | null;
   /** Ruolo nello studio corrente (null se nessuno studio) */
   role: CompanyRole | null;
   profile: AccessProfile | null;
+  /** Permessi effettivi: ruolo (o ruolo personalizzato) filtrato dai moduli attivi. Controllo: can() */
   permissions: Permission[];
+  /** Terminologia risolta dello studio (con default) */
+  terms: Terms;
+  modules: CompanyModules;
+  customRole: { id: string; label: string } | null;
+  /** Titolo leggibile del ruolo (etichetta del ruolo personalizzato, altrimenti da terms) */
+  roleTitle: string | null;
 }
 export interface OnboardingInput {
   name: string;
@@ -61,6 +72,10 @@ export interface CreateCalendarEventInput {
   source: EventSource;
   /** Bene del cliente collegato (facoltativo, deve appartenere allo studio) */
   assetId?: string;
+  /** Tipo di appuntamento dello studio (attivo, deve appartenere allo studio) */
+  appointmentTypeId?: string;
+  /** Colore #RRGGBB; se assente e c'è un tipo di appuntamento, si usa il suo colore */
+  color?: string;
 }
 export interface SyncResult {
   imported: number;
@@ -160,10 +175,82 @@ export interface UpdateAssetInput {
 // GET   /api/clients/fields?entity=asset[&type=veicolo] → ClientFieldDefinition[] dei beni
 //       (senza type: tutte le definizioni dei beni dello studio; solo non sensibili)
 export type CreateClientInput = Omit<Client, "id" | "age" | "initials">;
-/** Campi clinici: presenti in risposta solo con clinical:read (assenti, non null, altrimenti). */
-export type ClinicalClientKey = "recommendation" | "previousVisit" | "selectedTooth" | "xrayFindings" | "treatments";
+/** Campi sensibili (ex clinici): presenti in risposta solo con sensitive:read (assenti, non null, altrimenti). */
+export type ClinicalClientKey = "recommendation" | "previousVisit" | "treatments";
 export type ClientResponse = Omit<Client, ClinicalClientKey> & Partial<Pick<Client, ClinicalClientKey>>;
 export type { Sector, ClientFieldDefinition, ClientFieldType, ClientAttributeValue, ClientAttributes, FieldEntity };
+
+// ─── Tipi di appuntamento (agenda) ──────────────────────────────────────────
+// GET /api/appointment-types → AppointmentType[] (attivi, ordinati per position; calendar:read)
+
+// ─── Impostazioni dello studio (settori configurabili) ──────────────────────
+// GET    /api/settings                       → SettingsResponse                       (settings:manage)
+// PATCH  /api/settings/terms                 body Partial<Terms> → Terms              ("" o null = ripristina default)
+// PATCH  /api/settings/modules               body Partial<CompanyModules> → CompanyModules
+// POST   /api/settings/template              body ApplyTemplateInput → SettingsResponse
+// POST   /api/settings/appointment-types     body CreateAppointmentTypeInput → AppointmentType (201)
+// PATCH  /api/settings/appointment-types/[id] body UpdateAppointmentTypeInput → AppointmentType
+// DELETE /api/settings/appointment-types/[id] → null (archivia, non elimina)
+// GET    /api/settings/roles                 → RolesResponse                          (members:manage)
+// POST   /api/settings/roles                 body CreateCustomRoleInput → CustomRole (201)
+// PATCH  /api/settings/roles/[id]            body UpdateCustomRoleInput → CustomRole
+// DELETE /api/settings/roles/[id]            → null (i membri tornano al ruolo di sistema)
+// PATCH  /api/settings/members/[userId]      body { customRoleId: string | null } → MemberSummary
+export interface SettingsResponse {
+  sector: Sector;
+  templateVersion: number | null;
+  /** Terminologia risolta (con default) */
+  terms: Terms;
+  /** Solo le etichette personalizzate dello studio (companies.terms grezzo) */
+  termOverrides: Partial<Terms>;
+  modules: CompanyModules;
+  /** Anche gli archiviati (archivedAt valorizzato) */
+  appointmentTypes: AppointmentType[];
+  /** Ultima versione di ogni preset di settore */
+  templates: VerticalTemplateSummary[];
+}
+export interface ApplyTemplateInput {
+  sector: Sector;
+  /** true = le etichette personalizzate dello studio restano sopra il preset */
+  keepTerms?: boolean;
+}
+export interface CreateAppointmentTypeInput {
+  label: string;
+  color?: string;
+  durationMinutes?: number;
+  /** Chiave stabile; se assente viene generata dalla label */
+  key?: string;
+}
+export interface UpdateAppointmentTypeInput {
+  label?: string;
+  color?: string;
+  durationMinutes?: number;
+  position?: number;
+  archived?: boolean;
+}
+/** Membro dello studio (get_company_members). */
+export interface MemberSummary {
+  userId: string;
+  email: string | null;
+  role: CompanyRole;
+  customRoleId: string | null;
+  createdAt: string;
+}
+export interface RolesResponse {
+  roles: CustomRole[];
+  members: MemberSummary[];
+}
+export interface CreateCustomRoleInput {
+  label: string;
+  /** Solo permessi di CUSTOM_ROLE_PERMISSIONS, almeno uno */
+  permissions: Permission[];
+  /** Chiave stabile; se assente viene generata dalla label */
+  key?: string;
+}
+export interface UpdateCustomRoleInput {
+  label?: string;
+  permissions?: Permission[];
+}
 
 // ─── Badge sidebar (contatori reali) ────────────────────────────────────────
 // GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.

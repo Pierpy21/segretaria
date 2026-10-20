@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { apiOk, handleApiError } from "@/lib/api";
 import { createClientAsset, listClientAssets } from "@/lib/data/assets";
-import { withPermission } from "@/lib/db";
+import { withModule } from "@/lib/db";
 import { parseAssetInput, parseClientCode, parseFlagParam, readJsonObject } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const code = parseClientCode((await params).id);
     const includeArchived = parseFlagParam(request.nextUrl.searchParams.get("includeArchived"), "includeArchived");
     return apiOk(
-      await withPermission("clients:read", (tx, { companyId }) =>
+      await withModule("assets", "clients:read", (tx, { companyId }) =>
         listClientAssets(tx, companyId, code, includeArchived),
       ),
     );
@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const code = parseClientCode((await params).id);
     const input = parseAssetInput(await readJsonObject(request));
     return apiOk(
-      await withPermission("clients:write", (tx, { companyId }) =>
+      await withModule("assets", "clients:write", (tx, { companyId }) =>
         createClientAsset(tx, companyId, code, input),
       ),
       201,

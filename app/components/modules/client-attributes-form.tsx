@@ -15,10 +15,19 @@ export interface ClientAttributesFormProps {
   values: ClientAttributes;
   onChange: (key: string, value: ClientAttributeValue) => void;
   readOnly?: boolean;
+  /** I campi sensibili sono modificabili solo con sensitive:write */
+  canEditSensitive?: boolean;
 }
 
 /** Form generato dalle definizioni dei campi (GET /api/clients/fields), per cliente o per bene. */
-export default function ClientAttributesForm({ clientType, entity = "client", values, onChange, readOnly = false }: ClientAttributesFormProps) {
+export default function ClientAttributesForm({
+  clientType,
+  entity = "client",
+  values,
+  onChange,
+  readOnly = false,
+  canEditSensitive = true,
+}: ClientAttributesFormProps) {
   const entityQuery = entity === "asset" ? "entity=asset&" : "";
   const fieldsHook = useApiData<ClientFieldDefinition[]>(`/api/clients/fields?${entityQuery}type=${encodeURIComponent(clientType)}`);
 
@@ -35,6 +44,7 @@ export default function ClientAttributesForm({ clientType, entity = "client", va
       {fields.map(field => {
         const id = `attr-${entity}-${field.key}`;
         const value = values[field.key] ?? null;
+        const locked = readOnly || (field.sensitive && !canEditSensitive);
         const reserved = field.sensitive && (
           <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
             Riservato
@@ -52,7 +62,7 @@ export default function ClientAttributesForm({ clientType, entity = "client", va
                 id={id}
                 type="checkbox"
                 checked={value === true}
-                disabled={readOnly}
+                disabled={locked}
                 onChange={e => onChange(field.key, e.target.checked)}
                 className="w-4 h-4 rounded border-line-strong accent-accent"
               />
@@ -77,7 +87,7 @@ export default function ClientAttributesForm({ clientType, entity = "client", va
               <select
                 id={id}
                 value={value === null ? "" : String(value)}
-                disabled={readOnly}
+                disabled={locked}
                 required={field.required}
                 onChange={e => onChange(field.key, e.target.value === "" ? null : e.target.value)}
                 className={INPUT_CLASS}
@@ -99,7 +109,7 @@ export default function ClientAttributesForm({ clientType, entity = "client", va
               id={id}
               type={inputType}
               value={value === null ? "" : String(value)}
-              disabled={readOnly}
+              disabled={locked}
               required={field.required}
               onChange={e => {
                 const raw = e.target.value;

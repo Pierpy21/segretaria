@@ -30,8 +30,11 @@ import { dateInZone, instantOf, parseDateInput, parseEuro } from "./format";
 
 const ONE_HOUR_MS = 3_600_000;
 
-/** Attributi demo per settore: chiavi allineate a seed_client_field_defaults (sensitive → clinical). */
-const DEMO_ATTRIBUTES: Record<Sector, { public: ClientAttributes; clinical: ClientAttributes }> = {
+/**
+ * Attributi demo per settore: chiavi allineate ai campi del preset (sensitive → clinical).
+ * Settore senza demo → nessun attributo (fallback in seedDemoData).
+ */
+const DEMO_ATTRIBUTES: Partial<Record<Sector, { public: ClientAttributes; clinical: ClientAttributes }>> = {
   dentale: {
     public: { referral_source: "Passaparola", privacy_consent: true },
     clinical: { allergies: "Nessuna nota", anticoagulants: false },
@@ -50,7 +53,7 @@ type Copy = Partial<Record<"title" | "description" | "type" | "snippet" | "text"
 type SectorCopy = Record<"events" | "reminders" | "tasks" | "quotes" | "chats" | "messages", Record<string, Copy>>;
 
 /** Sostituzioni testuali per settore, indicizzate per id del mock (messaggi: `${chatId}:${msgId}`). */
-const SECTOR_COPY: Record<Exclude<Sector, "dentale">, SectorCopy> = {
+const SECTOR_COPY: Partial<Record<Sector, SectorCopy>> = {
   estetico: {
     events: {
       "1": { title: "Trattamento viso — Rossi E.", description: "Slot urgente prenotato dall'AI tramite WhatsApp (Cabina 1)." },
@@ -165,7 +168,10 @@ const SECTOR_COPY: Record<Exclude<Sector, "dentale">, SectorCopy> = {
   },
 };
 
-/** Testo del mock sostituito per settore; per 'dentale' ritorna sempre il fallback (mock originale). */
+/**
+ * Testo del mock sostituito per settore; per 'dentale' ritorna sempre il fallback (mock originale).
+ * Settore senza testi propri → testi 'generico'.
+ */
 function sectorCopy(
   sector: Sector,
   table: keyof SectorCopy,
@@ -174,7 +180,8 @@ function sectorCopy(
   fallback: string,
 ): string {
   if (sector === "dentale") return fallback;
-  return SECTOR_COPY[sector][table][id]?.[field] ?? fallback;
+  const copy = SECTOR_COPY[sector] ?? SECTOR_COPY.generico;
+  return copy?.[table][id]?.[field] ?? fallback;
 }
 
 function requireDate(value: string, label: string): string {
@@ -275,7 +282,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
   }));
   await tx.insert(quotes).values(quoteRows);
 
-  const demo = DEMO_ATTRIBUTES[sector];
+  const demo = DEMO_ATTRIBUTES[sector] ?? { public: {}, clinical: {} };
   const clientRows: NewClientRow[] = INITIAL_PATIENTS.map((p) => ({
     companyId,
     code: p.id,
@@ -306,8 +313,6 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
         ? {
             recommendation: p.recommendation,
             previousVisit: p.previousVisit,
-            selectedTooth: p.selectedTooth,
-            xrayFindings: p.xrayFindings,
             treatments: p.treatments,
           }
         : {}),

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { Search, Plus, Bell, Menu, LogOut } from "lucide-react";
 import { useMe, initialsOf } from "@/app/hooks/use-me";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { hasPermission } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
+import { useTerms } from "@/app/hooks/use-terms";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -13,11 +14,12 @@ interface HeaderProps {
 export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const { data: me } = useMe();
+  const terms = useTerms();
 
   const email = me?.user.email ?? null;
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
-  const canCreateAppointment = hasPermission(me?.role, "calendar:write");
-  const canCreateQuote = hasPermission(me?.role, "quotes:write");
+  const canCreateAppointment = can(me?.permissions, "calendar:write");
+  const canCreateQuote = can(me?.permissions, "quotes:write");
 
   async function signOut() {
     try {
@@ -46,7 +48,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <input
           type="text"
           className="bg-transparent outline-none flex-1 text-xs sm:text-sm text-ink placeholder-ink-muted min-w-0"
-          placeholder="Cerca clienti…"
+          placeholder={`Cerca ${terms.clientPlural.toLowerCase()}…`}
         />
       </div>
 
@@ -63,7 +65,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         {/* Secondary Action Button - hidden on small mobile */}
         {canCreateQuote && (
           <button className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-ink bg-surface-muted border border-line hover:bg-line transition-colors whitespace-nowrap">
-            <Plus size={14} /> Nuovo Piano di Cura
+            <Plus size={14} /> Nuovo {terms.quoteSingular}
           </button>
         )}
 

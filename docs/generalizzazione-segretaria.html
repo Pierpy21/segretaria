@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>SegretarIA – Generalizzazione multi-settore</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#F5EFE2; --ink:#4B2D20; --muted:#7a6256; --accent:#E04A95; --soft:#fbe3ef; --line:#e8dfcd; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; padding:48px 16px 80px; }
+  body > * { max-width:860px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:2.2rem; line-height:1.15; letter-spacing:-.02em; margin:0 auto 12px; }
+  h1::after { content:""; display:block; width:56px; height:4px; border-radius:2px; background:var(--accent); margin-top:14px; }
+  h2 { font-size:1.45rem; margin:48px auto 16px; padding-left:12px; border-left:4px solid var(--accent); }
+  h3 { font-size:1.1rem; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); margin:36px auto 12px; }
+  h4 { font-size:1.05rem; margin:0 0 8px; }
+  h4 { background:var(--card); border:1px solid var(--line); border-bottom:0; border-radius:14px 14px 0 0; padding:16px 20px 4px; margin-bottom:0; }
+  h4 + ul { background:var(--card); border:1px solid var(--line); border-top:0; border-radius:0 0 14px 14px; padding:4px 20px 16px 40px; margin-top:0; margin-bottom:18px; }
+  p em { color:var(--muted); font-size:.9rem; }
+  strong { color:var(--ink); }
+  code { background:var(--soft); color:#a3306b; padding:1px 6px; border-radius:6px; font-size:.86em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  hr { border:0; height:1px; background:var(--line); margin:40px auto; }
+  ul, ol { padding-left:22px; }
+  li { margin:6px 0; }
+  li::marker { color:var(--accent); }
+  body > ul { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 24px 18px 40px; }
+  table { width:100%; border-collapse:separate; border-spacing:0; background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; font-size:.94rem; display:block; overflow-x:auto; }
+  thead th { background:var(--ink); color:var(--bg); text-align:left; font-weight:600; padding:12px 16px; white-space:nowrap; }
+  td { padding:12px 16px; border-top:1px solid var(--line); vertical-align:top; }
+  tbody tr:nth-child(even) td { background:#fcfaf5; }
+  td:nth-child(2) { white-space:nowrap; font-weight:600; }
+  @media (max-width:600px) { body { padding-top:28px; } h1 { font-size:1.7rem; } }
+</style>
+</head>
+<body>
+
+<h1>SegretarIA – Generalizzazione multi-settore</h1>
+<p><strong>Obiettivo:</strong> trasformare SegretarIA da gestionale per studi dentistici a segreteria versatile per qualsiasi attività (studi medici, commercialisti, avvocati, centri estetici…), usando <strong>un solo database</strong> e <strong>un solo codice</strong>. I settori si configurano con dei dati, senza scrivere codice nuovo.</p>
+<p><em>Ultimo aggiornamento: 20 ottobre 2026 · Branch: integrate/db-calendar</em></p>
+
+<hr>
+
+<h2>1. Principi di design</h2>
+<ul>
+  <li><strong>Un database multi-tenant.</strong> Ogni studio è una <code>company</code> e i dati sono isolati con <code>company_id</code> e le policy RLS di Supabase. Niente database diverso per ogni settore o cliente.</li>
+  <li><strong>Tre livelli di dati per i clienti.</strong>
+    <ol>
+      <li><strong>Campi comuni</strong> come colonne vere (nome, contatti, CF/P.IVA, note, stato): servono per indici, ricerca e filtri.</li>
+      <li><strong>Campi di settore</strong> in <code>attributes jsonb</code>, descritti dalla tabella <code>client_field_definitions</code>. Per esempio "allergie" per il dentista o "regime fiscale" per il commercialista.</li>
+      <li><strong>Dati sensibili</strong> (sanitari, giudiziari: GDPR art. 9) in <strong>tabelle separate</strong> con RLS propria, perché l'RLS protegge le righe e non i singoli campi di un JSON.</li>
+    </ol>
+  </li>
+  <li><strong>Permessi, non ruoli, nel codice.</strong> Le API e l'interfaccia controllano permessi (<code>clients:read</code>, <code>clinical:read</code>, <code>quotes:write</code>…), mai il nome del ruolo. Così aggiungere un ruolo non richiede di toccare le route.</li>
+  <li><strong>Doppia protezione.</strong> Permessi applicativi (API 403 e interfaccia filtrata) più policy RLS sul database, coerenti tra loro.</li>
+  <li><strong>Riuso.</strong> Le pagine sono sottili e riusano i moduli esistenti. La navigazione è una sola configurazione, filtrata per permesso.</li>
+</ul>
+
+<hr>
+
+<h2>2. Cosa è già stato fatto</h2>
+<table>
+  <thead>
+    <tr><th>Area</th><th>Stato</th><th>Dettagli</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Profili e ruoli</td><td>✅ Fatto</td><td>Ruoli <code>owner</code>/<code>admin</code> (Dottore), <code>member</code> (staff) e <code>accountant</code> (Assistente contabile). Mappa ruolo → permessi in <code>lib/auth/permissions.ts</code>.</td></tr>
+    <tr><td>Permessi API</td><td>✅ Fatto</td><td>Tutte le route usano <code>withPermission</code> e rispondono 403 <code>FORBIDDEN</code>. Senza <code>clinical:read</code> i campi clinici vengono omessi. <code>/api/me</code> restituisce ruolo, profilo e permessi.</td></tr>
+    <tr><td>Routing per ruolo</td><td>✅ Fatto</td><td>Route group <code>(studio)</code> e area <code>/contabile</code>, con layout che reindirizzano in base al ruolo. Navigazione unica in <code>app/constants/navigation.ts</code>.</td></tr>
+    <tr><td>RLS contabile</td><td>✅ Applicata</td><td>Dati clinici spostati in una tabella separata. Il contabile è escluso da dati clinici, agenda, chat, task e promemoria e può modificare i preventivi. ⚠️ Non ancora provata con un utente contabile reale.</td></tr>
+    <tr><td>Palette CPINSAI</td><td>✅ Fatto</td><td>Sfondo #F5EFE2, testo #4B2D20, accento #E04A95, come token Tailwind. Applicata ad admin, login e onboarding.</td></tr>
+    <tr><td>Pazienti → Clienti</td><td>✅ Fatto (PR #5)</td><td>Rinomina delle tabelle (<code>clients</code>, <code>client_clinical</code>), <code>client_type</code>, <code>attributes jsonb</code>, <code>client_field_definitions</code>, preset "dentale", form generato dalle definizioni.</td></tr>
+    <tr><td>Fase B – Settori configurabili</td><td>✅ Fatto</td><td>Migration <code>20261020120000_vertical_templates</code>: 6 preset versionati (<code>vertical_templates</code>, <code>apply_vertical_template</code>), terminologia in <code>companies.terms</code> + <code>useTerms()</code>, moduli in <code>company_modules</code>, ruoli personalizzati in <code>company_roles</code>, tipi di appuntamento. RLS su <code>has_permission()</code>; <code>clinical:read</code> → <code>sensitive:read/write</code>, nuovo <code>records:manage</code>, profilo "dottore" → "titolare". Pagina <code>/impostazioni</code>. RLS verificata per owner, member, accountant e ruolo personalizzato con utenti di prova.</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>3. Prossime subtask</h2>
+<p>Ordinate per priorità. Ogni fase si appoggia sulla precedente.</p>
+
+<h3>Fase A – Consolidare le basi (subito dopo la rinomina)</h3>
+
+<h4>A1. Test automatici delle policy RLS per ruolo</h4>
+<ul>
+  <li>Script o test (pgTAP oppure test Node con utenti di prova) che, per ogni ruolo, verificano cosa è leggibile e scrivibile su ogni tabella.</li>
+  <li>Una matrice ruolo × tabella × operazione generata da <code>ROLE_PERMISSIONS</code>, così codice e database non divergono.</li>
+  <li><strong>Perché:</strong> le policy del contabile non sono mai state provate con un utente reale. Ogni nuovo ruolo o settore aumenta il rischio di fughe di dati.</li>
+</ul>
+
+<h4>A2. Versioning delle definizioni dei campi</h4>
+<ul>
+  <li>Eliminazione morbida dei campi (<code>archived_at</code>), mai cancellazione fisica: i valori in <code>attributes</code> restano leggibili.</li>
+  <li><code>key</code> immutabile, <code>label</code> modificabile. Un cambio di tipo genera un job di migrazione dei valori.</li>
+  <li>Validazione lato server unica (schema Zod generato dalle definizioni), riusata da API, import e assistente AI.</li>
+</ul>
+
+<h4>A3. Ricerca e performance su <code>attributes</code></h4>
+<ul>
+  <li>Indice GIN su <code>attributes</code> e indici di espressione per i campi marcati <code>filterable</code>.</li>
+  <li>Limite al numero di campi per tipo di cliente e alla dimensione del JSON.</li>
+  <li>Paginazione a cursore su liste clienti, preventivi e messaggi.</li>
+</ul>
+
+<h3>Fase B – Rendere i settori configurabili</h3>
+
+<h4>B1. Preset di settore (vertical templates)</h4>
+<ul>
+  <li>Preset versionati: <code>dentale</code>, <code>medico</code>, <code>commercialista</code>, <code>legale</code>, <code>estetica</code>, <code>generico</code>.</li>
+  <li>Ogni preset contiene campi cliente, tipi di appuntamento, stati dei preventivi, moduli attivi e terminologia.</li>
+  <li>All'onboarding si sceglie il settore e il preset viene copiato nello studio, che poi può personalizzarlo.</li>
+</ul>
+
+<h4>B2. Terminologia per settore</h4>
+<ul>
+  <li>Un dizionario di etichette per settore: "Pazienti" o "Clienti" o "Assistiti", "Piani di cura" o "Preventivi" o "Parcelle", "Dottore" o "Titolare" o "Professionista".</li>
+  <li>Un hook <code>useTerms()</code> letto da navigazione, header e moduli, al posto delle stringhe fisse.</li>
+  <li>Il profilo <code>dottore</code> va rinominato in <code>titolare</code> nel codice.</li>
+</ul>
+
+<h4>B3. Moduli attivabili per studio</h4>
+<ul>
+  <li>Una tabella <code>company_modules</code> (agenda, chat, dati sensibili, preventivi, manutenzioni, assistente AI) con flag di attivazione.</li>
+  <li>La navigazione si filtra per permesso <strong>e</strong> per modulo attivo. Le API di un modulo disattivato rispondono 404 o 403.</li>
+  <li>Il modulo "dati clinici" diventa <strong>dati sensibili</strong> generico, con varianti per settore (clinici, legali, fiscali).</li>
+</ul>
+
+<h4>B4. Ruoli personalizzabili</h4>
+<ul>
+  <li>I ruoli di sistema (owner, admin, member, accountant) restano come base.</li>
+  <li>Una tabella <code>company_roles</code> permette ruoli personalizzati (es. "Receptionist", "Igienista", "Praticante") composti da permessi esistenti.</li>
+  <li>L'RLS legge i permessi tramite una funzione SQL (<code>has_permission(company_id, perm)</code>), non i nomi dei ruoli.</li>
+</ul>
+
+<h3>Fase C – Conformità e sicurezza</h3>
+
+<h4>C1. Dati sensibili e GDPR</h4>
+<ul>
+  <li>Registro degli accessi ai dati sensibili: chi ha letto cosa e quando.</li>
+  <li>Cifratura a riposo dei campi più delicati (Supabase Vault o pgsodium).</li>
+  <li>Gestione dei consensi (trattamento dati, marketing, comunicazioni) per cliente.</li>
+  <li>Export e cancellazione dei dati del singolo cliente (diritto di accesso e oblio).</li>
+</ul>
+
+<h4>C2. Gestione membri dello studio</h4>
+<ul>
+  <li>Invito via email, assegnazione del ruolo e revoca dell'accesso (permesso <code>members:manage</code>, già definito ma senza API né interfaccia).</li>
+</ul>
+
+<h3>Fase D – Funzionalità che sfruttano la generalizzazione</h3>
+
+<h4>D1. Area contabile completa</h4>
+<ul>
+  <li>API e pagine per pagamenti, incassi, scadenze e report (<code>payments:*</code> e <code>reports:read</code>, già definiti ma senza route).</li>
+  <li>Export per il commercialista (CSV o integrazione con la fatturazione elettronica).</li>
+</ul>
+
+<h4>D2. Import ed export clienti</h4>
+<ul>
+  <li>Import CSV o Excel con mappatura delle colonne sulle definizioni dei campi e validazione riga per riga.</li>
+</ul>
+
+<h4>D3. Assistente AI per settore</h4>
+<ul>
+  <li>Prompt e protocolli per settore, che usano le definizioni dei campi come contesto strutturato.</li>
+  <li>L'assistente rispetta gli stessi permessi dell'utente: mai dati sensibili a chi non ha il permesso.</li>
+</ul>
+
+<hr>
+
+<h2>4. Regole operative per lo sviluppo</h2>
+<ul>
+  <li><strong>Migration solo incrementali:</strong> mai modificare una migration già applicata.</li>
+  <li><strong>Prima il backend, poi il frontend:</strong> i subagenti (<code>next-backend</code>, <code>next-frontend</code>, <code>next-reviewer</code>) lavorano su file separati e in sequenza.</li>
+  <li><strong>Ogni nuova tabella</strong> ha <code>company_id</code>, RLS attiva, policy per permesso e test in A1.</li>
+  <li><strong>Niente logica legata al settore nel codice</strong> (es. <code>if (vertical === "dentale")</code>): tutto passa da preset, moduli e terminologia.</li>
+  <li><strong>Prima di ogni merge:</strong> <code>tsc</code>, <code>lint</code> e <code>build</code> verdi.</li>
+</ul>
+
+</body>
+</html>
