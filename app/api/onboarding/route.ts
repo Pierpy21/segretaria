@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       slug: created.slug,
       sector: input.sector,
       role,
+      templateVersion: created.templateVersion,
     };
     return apiOk(company, 201);
   } catch (err) {

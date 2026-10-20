@@ -12,8 +12,9 @@ import PerformanceStats from "@/app/components/performance-stats";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
 import { DAYS_OF_WEEK } from "@/app/constants/calendar";
 import { BOARD_COLUMNS, PRIORITY_COLOR } from "@/app/constants/maintenance";
-import { STATUS_META } from "@/app/constants/quotes";
+import { quoteStatusMap } from "@/app/constants/quotes";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { useTerms } from "@/app/hooks/use-terms";
 import { ALL_DAY_LABEL, addDays, formatWeekLabel, getVisibleRange, parseISODate, toISODate } from "@/app/lib/calendar-dates";
 import { formatEuro, parseAmount } from "@/app/lib/amount";
 import type { CalendarEventData, ReminderData, WeekDay, ReminderItem } from "@/app/types/calendar";
@@ -59,6 +60,7 @@ function Gate({
 
 export default function DashboardPage() {
   const router = useRouter();
+  const terms = useTerms();
   const [today] = useState(() => toISODate(new Date()));
   const week = getVisibleRange("Week", today);
 
@@ -84,7 +86,7 @@ export default function DashboardPage() {
 
   const kpis: KpiItem[] = [
     {
-      label: "Pazienti in Chat",
+      label: `${terms.clientPlural} in Chat`,
       value: chatsHook.loading || chatsHook.error ? "—" : String(chats.length),
       sub: `${unreadTotal} messaggi non letti`,
       up: true,
@@ -93,7 +95,7 @@ export default function DashboardPage() {
       spark: sparkFor(chats.length),
     },
     {
-      label: "Appuntamenti Poltrona",
+      label: "Appuntamenti",
       value: weekHook.loading || weekHook.error ? "—" : String(weekEvents.length),
       sub: "Questa settimana",
       up: true,
@@ -102,7 +104,7 @@ export default function DashboardPage() {
       spark: sparkFor(weekEvents.length),
     },
     {
-      label: "Sterilizzazione & Task",
+      label: terms.tasksLabel,
       value: tasksHook.loading || tasksHook.error ? "—" : String(openTasks.length),
       sub: `${highOpenTasks} ad alta priorità · ${doneTasks} completati`,
       up: highOpenTasks === 0,
@@ -111,7 +113,7 @@ export default function DashboardPage() {
       spark: sparkFor(openTasks.length),
     },
     {
-      label: "Piani di Cura Aperti",
+      label: `${terms.quotePlural} aperti`,
       value: quotesHook.loading || quotesHook.error ? "—" : String(openQuotes.length),
       sub: `${formatEuro(openQuotesTotal)} in accettazione`,
       up: true,
@@ -149,9 +151,7 @@ export default function DashboardPage() {
       .map(({ title, priority, ai }) => ({ title, priority, ai })),
   }));
 
-  const statusMap = Object.fromEntries(
-    Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
-  );
+  const statusMap = quoteStatusMap(terms);
 
   return (
     <>

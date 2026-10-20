@@ -1,4 +1,7 @@
+"use client";
+
 import { Bot, User } from "lucide-react";
+import { useTerms } from "@/app/hooks/use-terms";
 import type { Task, TaskPriority } from "@/app/types/maintenance";
 
 interface KanbanColumn {
@@ -14,13 +17,14 @@ interface MaintenanceBoardProps {
 }
 
 export default function MaintenanceBoard({ boardData }: MaintenanceBoardProps) {
+  const terms = useTerms();
   return (
     <div className="bg-surface rounded-2xl overflow-hidden flex flex-col border border-line">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-line">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Attività Cliniche & Studio</h2>
-          <p className="text-xs text-ink-muted">Kanban operativo: sterilizzazione, recall e lab</p>
+          <h2 className="text-sm font-semibold text-ink">{terms.tasksLabel}</h2>
+          <p className="text-xs text-ink-muted">{terms.tasksSubtitle}</p>
         </div>
         <button className="text-xs font-semibold text-accent-text hover:text-ink transition-colors">
           + Aggiungi attività

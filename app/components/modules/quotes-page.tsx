@@ -3,12 +3,13 @@
 import { useState, type FormEvent } from "react";
 import { Plus, X, Check, XCircle, Download, Trash2, LoaderCircle } from "lucide-react";
 import QuotesTable from "@/app/components/quotas-table";
-import { STATUS_META } from "@/app/constants/quotes";
+import { quoteStatusMap } from "@/app/constants/quotes";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
 import { useMe } from "@/app/hooks/use-me";
+import { useTerms } from "@/app/hooks/use-terms";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
-import { hasPermission } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
 import AssetSelect from "@/app/components/modules/asset-select";
 import { parseAmount } from "@/app/lib/amount";
@@ -39,7 +40,11 @@ export default function QuotesPage() {
   const quotesHook = useApiData<Quote[]>("/api/quotes");
   const quotes = quotesHook.data ?? [];
   const { data: me } = useMe();
-  const canClinical = hasPermission(me?.role, "clinical:read");
+  const terms = useTerms();
+  const canSensitive = can(me?.permissions, "sensitive:read");
+  const statusMap = quoteStatusMap(terms);
+  const clientLabel = terms.clientSingular.toLowerCase();
+  const quoteLabel = terms.quoteSingular.toLowerCase();
 
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "all">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,7 +75,7 @@ export default function QuotesPage() {
   }
 
   async function deleteQuote(q: Quote) {
-    if (!window.confirm(`Eliminare il piano di cura di ${q.client}?`)) return;
+    if (!window.confirm(`Eliminare ${quoteLabel} di ${q.client}?`)) return;
     setActionError(null);
     setSelectedId(null);
     quotesHook.mutate(list => (list ?? []).filter(x => x.id !== q.id));
@@ -113,7 +118,7 @@ export default function QuotesPage() {
     const type = form.type.trim();
     const amount = parseAmount(form.amount);
     if (!client || !type || amount === null) {
-      setFormError("Compila paziente, prestazione e un importo valido.");
+      setFormError(`Compila ${clientLabel}, prestazione e un importo valido.`);
       return;
     }
     const payload: CreateQuoteInput = {
@@ -154,10 +159,6 @@ export default function QuotesPage() {
     declined: quotes.filter(q => q.status === "declined").length,
   };
 
-  const statusMap = Object.fromEntries(
-    Object.entries(STATUS_META).map(([key, val]) => [key, { label: val.label, bg: val.bg, text: val.text }])
-  );
-
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4 items-start">
       {/* ── Main column ── */}
@@ -166,14 +167,14 @@ export default function QuotesPage() {
         <div className="bg-surface rounded-2xl border border-line p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-ink">Piani di Cura & Preventivi</h2>
-              <p className="text-xs text-ink-muted">Gestione trattamenti clinici, preventivi odontoiatrici e accettazioni</p>
+              <h2 className="text-sm font-semibold text-ink">{terms.quotePlural}</h2>
+              <p className="text-xs text-ink-muted">{terms.quotesSubtitle}</p>
             </div>
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover transition-colors"
             >
-              <Plus size={13} /> Nuovo Piano di Cura
+              <Plus size={13} /> Nuovo {terms.quoteSingular}
             </button>
           </div>
 
@@ -189,7 +190,7 @@ export default function QuotesPage() {
                     : "bg-surface-muted text-ink-muted border border-line hover:bg-line"
                   }`}
               >
-                {s === "all" ? "Tutti" : STATUS_META[s].label}
+                {s === "all" ? "Tutti" : statusMap[s].label}
                 <span className="ml-1.5 font-bold">{statusCounts[s]}</span>
               </button>
             ))}
@@ -206,14 +207,14 @@ export default function QuotesPage() {
         ) : filtered.length === 0 ? (
           <div className="bg-surface rounded-2xl border border-line p-8 text-center">
             <p className="text-sm text-ink-muted">
-              {quotes.length === 0 ? "Nessun piano di cura registrato." : "Nessun piano di cura per questo filtro."}
+              {quotes.length === 0 ? `Nessun ${quoteLabel} registrato.` : `Nessun ${quoteLabel} per questo filtro.`}
             </p>
             {quotes.length === 0 && (
               <button
                 onClick={openCreate}
                 className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover"
               >
-                Crea il primo piano di cura
+                Crea il primo {quoteLabel}
               </button>
             )}
           </div>
@@ -234,7 +235,7 @@ export default function QuotesPage() {
       {selectedQuote && (
         <div className="bg-surface rounded-2xl border border-line p-4 sticky top-[100px]">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-ink">Dettaglio Piano di Cura</p>
+            <p className="text-sm font-semibold text-ink">Dettaglio {terms.quoteSingular}</p>
             <button onClick={() => setSelectedId(null)} className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted" aria-label="Chiudi dettaglio">
               <X size={14} />
             </button>
@@ -242,15 +243,15 @@ export default function QuotesPage() {
 
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Codice PDC</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Codice</p>
               <p className="text-sm font-semibold text-ink">{selectedQuote.id}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Paziente</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">{terms.clientSingular}</p>
               <p className="text-sm text-ink">{selectedQuote.client}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Prestazione / Branca</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Prestazione</p>
               <p className="text-sm text-ink">{selectedQuote.type}</p>
             </div>
             <div>
@@ -262,26 +263,26 @@ export default function QuotesPage() {
               <p className="text-sm text-ink">{selectedQuote.date}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Stato Accettazione</p>
+              <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Stato</p>
               <div
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: STATUS_META[selectedQuote.status].bg, color: STATUS_META[selectedQuote.status].text }}
+                style={{ backgroundColor: statusMap[selectedQuote.status].bg, color: statusMap[selectedQuote.status].text }}
               >
-                {STATUS_META[selectedQuote.status].label}
+                {statusMap[selectedQuote.status].label}
               </div>
             </div>
-            {canClinical && (
+            {canSensitive && (
               <div>
-                <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">Dettagli Clinici</p>
+                <p className="text-[10px] font-bold uppercase text-ink-muted mb-1">{terms.sensitiveData}</p>
                 <p className="text-xs text-ink-muted leading-snug">{selectedQuote.description}</p>
               </div>
             )}
 
             {selectedQuote.isAiGenerated && selectedQuote.status === "pending_ai" && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-[10px] font-bold text-emerald-800 mb-2">Bozza Generata da AI Clinica</p>
+                <p className="text-[10px] font-bold text-emerald-800 mb-2">Bozza generata dall&apos;AI</p>
                 <p className="text-xs text-emerald-800 leading-snug mb-3">
-                  Piano di trattamento precompilato dall&apos;assistente AI in base alla richiesta del paziente. Verifica le prestazioni e approva l&apos;invio telematico.
+                  {terms.quoteSingular} precompilato dall&apos;assistente AI in base alla richiesta del {clientLabel}. Verifica le prestazioni e approva l&apos;invio.
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -308,7 +309,7 @@ export default function QuotesPage() {
 
             {selectedQuote.status === "approved" && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-[10px] font-bold text-emerald-800">✓ Accettato dal Paziente</p>
+                <p className="text-[10px] font-bold text-emerald-800">✓ {terms.statusApproved}</p>
                 <p className="text-[10px] text-emerald-800 mt-1">Piano di cura accettato con firma digitale. Pronto per la fatturazione o acconto.</p>
               </div>
             )}
@@ -337,7 +338,7 @@ export default function QuotesPage() {
           <form onSubmit={submitQuote} className="bg-surface rounded-2xl border border-line w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-ink">
-                {modal.mode === "edit" ? "Modifica Piano di Cura" : "Nuovo Piano di Cura"}
+                {modal.mode === "edit" ? `Modifica ${terms.quoteSingular}` : `Nuovo ${terms.quoteSingular}`}
               </p>
               <button type="button" onClick={closeModal} className="p-1 rounded-lg text-ink-muted hover:bg-surface-muted" aria-label="Chiudi">
                 <X size={15} />
@@ -347,14 +348,14 @@ export default function QuotesPage() {
               <input
                 value={form.client}
                 onChange={e => setForm({ ...form, client: e.target.value })}
-                placeholder="Nome e cognome paziente"
+                placeholder={`Nome e cognome ${clientLabel}`}
                 className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
               />
               <AssetSelect value={form.assetId} clientName={form.client} onChange={assetId => setForm({ ...form, assetId })} />
               <input
                 value={form.type}
                 onChange={e => setForm({ ...form, type: e.target.value })}
-                placeholder="Prestazione (es. Implantologia, Ortodonzia, Igiene)"
+                placeholder="Prestazione o servizio"
                 className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent"
               />
               <input
@@ -367,7 +368,7 @@ export default function QuotesPage() {
               <textarea
                 value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="Dettagli terapeutici, elementi dentali e note cliniche"
+                placeholder="Dettagli e note"
                 rows={3}
                 className="w-full rounded-xl px-3 py-2 text-sm text-ink bg-surface-muted border border-line outline-none focus:border-accent resize-none"
               />
@@ -387,7 +388,7 @@ export default function QuotesPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-ink bg-accent hover:bg-accent-hover disabled:opacity-60"
               >
                 {submitting && <LoaderCircle size={12} className="animate-spin" />}
-                Salva Piano di Cura
+                Salva {terms.quoteSingular}
               </button>
             </div>
           </form>

@@ -5,6 +5,7 @@ import { Plus, X, Bot, User, Trash2, GripVertical, Filter, LoaderCircle } from "
 import { BOARD_COLUMNS, PRIORITY_COLOR } from "@/app/constants/maintenance";
 import { apiFetch } from "@/app/lib/api-client";
 import { useApiData } from "@/app/hooks/use-api-data";
+import { useTerms } from "@/app/hooks/use-terms";
 import { refreshBadges } from "@/app/hooks/use-sidebar-badges";
 import { Skeleton, ErrorState } from "@/app/components/ui/async-state";
 import AssetSelect from "@/app/components/modules/asset-select";
@@ -30,6 +31,7 @@ function errorMessage(err: unknown): string {
 export default function MaintenancePage() {
   const tasksHook = useApiData<BoardTask[]>("/api/tasks");
   const tasks = tasksHook.data ?? [];
+  const terms = useTerms();
 
   const [filterSource, setFilterSource] = useState<FilterSource>("all");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -123,8 +125,8 @@ export default function MaintenancePage() {
       <div className="bg-surface rounded-2xl border border-line p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-ink">Attività Cliniche & Studio</h2>
-            <p className="text-xs text-ink-muted">Kanban operativo: sterilizzazione, laboratorio odontotecnico, recall e forniture</p>
+            <h2 className="text-sm font-semibold text-ink">{terms.tasksLabel}</h2>
+            <p className="text-xs text-ink-muted">{terms.tasksSubtitle}</p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}

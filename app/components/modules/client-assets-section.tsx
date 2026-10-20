@@ -30,10 +30,12 @@ export interface ClientAssetsSectionProps {
   /** Codice cliente (es. "PT-2026-0142") */
   clientId: string;
   canWrite: boolean;
+  /** Campi sensibili dei beni: modificabili solo con sensitive:write */
+  canWriteSensitive: boolean;
 }
 
 /** Beni del cliente raggruppati per tipo. Non si mostra se lo studio non ha campi per i beni. */
-export default function ClientAssetsSection({ clientId, canWrite }: ClientAssetsSectionProps) {
+export default function ClientAssetsSection({ clientId, canWrite, canWriteSensitive }: ClientAssetsSectionProps) {
   const fieldsHook = useApiData<ClientFieldDefinition[]>("/api/clients/fields?entity=asset");
   const assetsHook = useApiData<ClientAsset[]>(`/api/clients/${encodeURIComponent(clientId)}/assets`);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -153,6 +155,7 @@ export default function ClientAssetsSection({ clientId, canWrite }: ClientAssets
       <ClientAttributesForm
         entity="asset"
         clientType={editingType}
+        canEditSensitive={canWriteSensitive}
         values={draft.attributes}
         onChange={(key, value) => setDraft(d => ({ ...d, attributes: { ...d.attributes, [key]: value } }))}
       />

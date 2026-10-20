@@ -1,6 +1,6 @@
 import { apiOk, handleApiError } from "@/lib/api";
 import { listFieldDefinitions } from "@/lib/data/clients";
-import { hasPermission } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import { withPermission } from "@/lib/db";
 import { parseAssetTypeParam, parseClientTypeParam, parseEntityParam } from "@/lib/validation";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Definizioni dei campi. `?entity=client` (default): `?type=dentale` filtra per settore;
- * sensibili solo con clinical:read. `?entity=asset`: `?type=veicolo` filtra per tipo bene,
+ * sensibili solo con sensitive:read. `?entity=asset`: `?type=veicolo` filtra per tipo bene,
  * senza `type` restituisce tutte le definizioni dei beni (solo non sensibili).
  */
 export async function GET(request: Request) {
@@ -25,8 +25,8 @@ export async function GET(request: Request) {
     }
     const type = parseClientTypeParam(sp.get("type"));
     return apiOk(
-      await withPermission("clients:read", (tx, { companyId, role }) =>
-        listFieldDefinitions(tx, companyId, type, hasPermission(role, "clinical:read")),
+      await withPermission("clients:read", (tx, { companyId, permissions }) =>
+        listFieldDefinitions(tx, companyId, type, can(permissions, "sensitive:read")),
       ),
     );
   } catch (err) {

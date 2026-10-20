@@ -108,7 +108,7 @@ export default function PerformanceStats() {
         <div className="flex items-start justify-between mb-3">
           <div>
             <h2 className="text-sm font-semibold text-ink">Prestazioni Più Richieste</h2>
-            <p className="text-xs text-ink-muted">Per branca odontoiatrica — mese corrente</p>
+            <p className="text-xs text-ink-muted">Per tipo di prestazione — mese corrente</p>
           </div>
           <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-surface-muted">
             <Activity size={14} className="text-ink" />

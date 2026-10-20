@@ -2,19 +2,27 @@
 // Ogni funzione lancia ValidationError con messaggio in italiano: la UI lo mostra così com'è.
 import { randomUUID } from "node:crypto";
 import type {
+  ApplyTemplateInput,
   AppleConnectInput,
+  CreateAppointmentTypeInput,
   CreateAssetInput,
   CreateCalendarEventInput,
   CreateClientInput,
+  CreateCustomRoleInput,
   CreateMessageInput,
   CreateQuoteInput,
   CreateReminderInput,
   CreateTaskInput,
   OnboardingInput,
+  UpdateAppointmentTypeInput,
   UpdateAssetInput,
+  UpdateCustomRoleInput,
   UpdateReminderInput,
   UpdateTaskInput,
 } from "@/app/types/api";
+import type { CompanyModules, ModuleKey, TermKey } from "@/app/types/settings";
+import { CUSTOM_ROLE_PERMISSIONS, MODULE_KEYS, type Permission } from "@/lib/auth/permissions";
+import { TERM_KEYS } from "@/lib/terms";
 import type { EventSource, ReminderPriority, ReminderStatus } from "@/app/types/calendar";
 import type { ColumnId, TaskPriority } from "@/app/types/maintenance";
 import type { MessageFrom } from "@/app/types/messaging";
@@ -24,10 +32,8 @@ import type {
   FieldEntity,
   InsuranceCardData,
   PreviousVisitNote,
-  SelectedToothData,
   Sector,
   TreatmentHistoryItem,
-  XRayFinding,
 } from "@/app/types/clients";
 import type { QuoteStatus } from "@/app/types/quotes";
 import { parseToUtcMs } from "@/lib/calendar-sync/time";
@@ -46,6 +52,11 @@ const CLIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
 /** Tipo bene = client_type delle definizioni entity='asset' (stesso formato delle chiavi). */
 const ASSET_TYPE_RE = /^[a-z][a-z0-9_]{0,62}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+/** Chiave stabile di tipi di appuntamento e ruoli (come i CHECK SQL). */
+const KEY_RE = /^[a-z][a-z0-9_]{0,62}$/;
+const TERM_KEY_SET = new Set<string>(TERM_KEYS);
+const MODULE_KEY_SET = new Set<string>(MODULE_KEYS);
 
 // ─── Enum del contratto (app/types/*) ───────────────────────────────────────
 export const EVENT_SOURCES = ["Google Calendar", "Apple Calendar", "Manual", "AI Secretary"] as const satisfies readonly EventSource[];
@@ -58,8 +69,9 @@ export const MESSAGE_FROM = ["contact", "user", "ai-draft"] as const satisfies r
 export const CLIENT_MESSAGE_FROM = ["user", "ai-draft"] as const satisfies readonly MessageFrom[];
 export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined"] as const satisfies readonly QuoteStatus[];
 export const GENDERS = ["F", "M"] as const;
-export const SECTORS = ["dentale", "estetico", "generico"] as const satisfies readonly Sector[];
-const SEVERITIES = ["high", "medium", "low"] as const;
+export const SECTORS = [
+  "dentale", "medico", "commercialista", "legale", "estetico", "generico",
+] as const satisfies readonly Sector[];
 const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
 
 // ─── Primitivi ──────────────────────────────────────────────────────────────
@@ -254,6 +266,24 @@ function parseAssetIdValue(v: unknown): string {
   return v;
 }
 
+/** UUID opzionale di un campo del body (assente/null → undefined). */
+function optUuid(obj: JsonObject, key: string, label: string): string | undefined {
+  if (isBlank(obj[key])) return undefined;
+  const v = obj[key];
+  if (typeof v !== "string" || !UUID_RE.test(v)) throw new ValidationError(`${label} non valido`);
+  return v;
+}
+
+/** Colore #RRGGBB. */
+function parseColorValue(v: unknown): string {
+  if (typeof v !== "string" || !COLOR_RE.test(v)) throw new ValidationError("Colore non valido (formato #RRGGBB)");
+  return v;
+}
+
+function optColor(obj: JsonObject, key: string): string | undefined {
+  return isBlank(obj[key]) ? undefined : parseColorValue(obj[key]);
+}
+
 export function parseCalendarEventInput(body: JsonObject): CreateCalendarEventInput {
   return {
     title: reqString(body, "title", "Titolo", 300),
@@ -263,6 +293,8 @@ export function parseCalendarEventInput(body: JsonObject): CreateCalendarEventIn
     endTime: reqTime(body, "endTime", "Orario di fine"),
     source: reqEnum(body, "source", EVENT_SOURCES, "Origine evento"),
     assetId: optAssetId(body),
+    appointmentTypeId: optUuid(body, "appointmentTypeId", "Tipo di appuntamento"),
+    color: optColor(body, "color"),
   };
 }
 
@@ -399,27 +431,6 @@ function parsePreviousVisit(v: unknown): PreviousVisitNote {
   return pickStrings(v, "Ultima visita", ["date", "doctor", "summary", "details"]);
 }
 
-function parseSelectedTooth(v: unknown): SelectedToothData {
-  return pickStrings(v, "Dente selezionato", [
-    "number", "name", "status", "statusColor", "lastExamination", "aiNote",
-  ]);
-}
-
-function parseXrayFindings(v: unknown): XRayFinding[] {
-  return asArray(v, "Radiografie").map((item, i) => {
-    const label = `Radiografia ${i + 1}`;
-    const o = asRecord(item, label);
-    const s = pickStrings(o, label, ["toothNumber", "toothName", "issue", "notes"]);
-    return {
-      id: typeof o.id === "number" && Number.isInteger(o.id) ? o.id : i + 1,
-      ...s,
-      xPercent: reqNumber(o, "xPercent", `${label}: posizione X`, { min: 0, max: 100 }),
-      yPercent: reqNumber(o, "yPercent", `${label}: posizione Y`, { min: 0, max: 100 }),
-      severity: reqEnum(o, "severity", SEVERITIES, `${label}: gravità`),
-    };
-  });
-}
-
 function parseTreatments(v: unknown): TreatmentHistoryItem[] {
   return asArray(v, "Storico trattamenti").map((item, i) => {
     const label = `Trattamento ${i + 1}`;
@@ -457,8 +468,6 @@ function clientFields(body: JsonObject, required: boolean): Partial<CreateClient
   }
   if (required || body.insurance !== undefined) out.insurance = parseInsurance(body.insurance);
   if (required || body.previousVisit !== undefined) out.previousVisit = parsePreviousVisit(body.previousVisit);
-  if (required || body.selectedTooth !== undefined) out.selectedTooth = parseSelectedTooth(body.selectedTooth);
-  if (required || body.xrayFindings !== undefined) out.xrayFindings = parseXrayFindings(body.xrayFindings);
   if (required || body.treatments !== undefined) out.treatments = parseTreatments(body.treatments);
   return out;
 }
@@ -497,6 +506,112 @@ export function parseAssetPatch(body: JsonObject): UpdateAssetInput {
   if (body.attributes !== undefined) out.attributes = asOptionalRecord(body.attributes, "Attributi") as ClientAttributes;
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
   return out;
+}
+
+// ─── Impostazioni dello studio ──────────────────────────────────────────────
+/** Chiave stabile (tipi di appuntamento, ruoli): formato dei CHECK SQL. */
+function optKey(obj: JsonObject, label: string): string | undefined {
+  const v = optString(obj, "key", label, 63);
+  if (v !== undefined && !KEY_RE.test(v)) throw new ValidationError(`${label} non valida (minuscole, cifre e _)`);
+  return v;
+}
+
+/** Etichette: chiavi note; stringa vuota o null = rimuovi (torna il default del settore). */
+export function parseTermsPatch(body: JsonObject): Partial<Record<TermKey, string | null>> {
+  const out: Partial<Record<TermKey, string | null>> = {};
+  for (const [key, v] of Object.entries(body)) {
+    if (!TERM_KEY_SET.has(key)) throw new ValidationError(`Etichetta "${key}" non prevista`);
+    const term = key as TermKey;
+    if (v === null) {
+      out[term] = null;
+      continue;
+    }
+    if (typeof v !== "string") throw new ValidationError(`Etichetta "${key}" non valida`);
+    const t = v.trim();
+    if (t.length > 80) throw new ValidationError(`Etichetta "${key}": massimo 80 caratteri`);
+    out[term] = t || null;
+  }
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessuna etichetta da aggiornare");
+  return out;
+}
+
+/** Moduli: solo chiavi note, valori booleani. */
+export function parseModulesPatch(body: JsonObject): Partial<CompanyModules> {
+  const out: Partial<CompanyModules> = {};
+  for (const [key, v] of Object.entries(body)) {
+    if (!MODULE_KEY_SET.has(key)) throw new ValidationError(`Modulo "${key}" non previsto`);
+    if (typeof v !== "boolean") throw new ValidationError(`Modulo "${key}" non valido (booleano atteso)`);
+    out[key as ModuleKey] = v;
+  }
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun modulo da aggiornare");
+  return out;
+}
+
+export function parseApplyTemplateInput(body: JsonObject): ApplyTemplateInput {
+  return {
+    sector: reqEnum(body, "sector", SECTORS, "Settore"),
+    keepTerms: optBoolean(body, "keepTerms", "Mantieni etichette", false),
+  };
+}
+
+export function parseAppointmentTypeInput(body: JsonObject): CreateAppointmentTypeInput {
+  return {
+    label: reqString(body, "label", "Etichetta", 60),
+    color: optColor(body, "color"),
+    durationMinutes: isBlank(body.durationMinutes)
+      ? undefined
+      : reqNumber(body, "durationMinutes", "Durata", { min: 5, max: 600, integer: true }),
+    key: optKey(body, "Chiave"),
+  };
+}
+
+export function parseAppointmentTypePatch(body: JsonObject): UpdateAppointmentTypeInput {
+  const out: UpdateAppointmentTypeInput = {};
+  if (body.label !== undefined) out.label = reqString(body, "label", "Etichetta", 60);
+  if (body.color !== undefined) out.color = parseColorValue(body.color);
+  if (body.durationMinutes !== undefined) {
+    out.durationMinutes = reqNumber(body, "durationMinutes", "Durata", { min: 5, max: 600, integer: true });
+  }
+  if (body.position !== undefined) out.position = reqNumber(body, "position", "Posizione", { min: 0, max: 100_000, integer: true });
+  if (body.archived !== undefined) out.archived = optBoolean(body, "archived", "Archiviato", false);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+/** Permessi di un ruolo personalizzato: solo CUSTOM_ROLE_PERMISSIONS, almeno uno, senza duplicati. */
+function parseRolePermissions(value: unknown): Permission[] {
+  const list = asArray(value, "Permessi", CUSTOM_ROLE_PERMISSIONS.length);
+  const allowed = new Set<string>(CUSTOM_ROLE_PERMISSIONS);
+  const out = new Set<Permission>();
+  for (const p of list) {
+    if (typeof p !== "string" || !allowed.has(p)) throw new ValidationError(`Permesso non assegnabile: ${String(p)}`);
+    out.add(p as Permission);
+  }
+  if (out.size === 0) throw new ValidationError("Il ruolo deve avere almeno un permesso");
+  return [...out];
+}
+
+export function parseCustomRoleInput(body: JsonObject): CreateCustomRoleInput {
+  return {
+    label: reqString(body, "label", "Nome del ruolo", 60),
+    permissions: parseRolePermissions(body.permissions),
+    key: optKey(body, "Chiave"),
+  };
+}
+
+export function parseCustomRolePatch(body: JsonObject): UpdateCustomRoleInput {
+  const out: UpdateCustomRoleInput = {};
+  if (body.label !== undefined) out.label = reqString(body, "label", "Nome del ruolo", 60);
+  if (body.permissions !== undefined) out.permissions = parseRolePermissions(body.permissions);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+/** Assegnazione del ruolo personalizzato a un membro: null = torna al ruolo di sistema. */
+export function parseMemberPatch(body: JsonObject): { customRoleId: string | null } {
+  if (body.customRoleId === undefined) throw new ValidationError("customRoleId obbligatorio (null per rimuovere)");
+  if (body.customRoleId === null) return { customRoleId: null };
+  return { customRoleId: optUuid(body, "customRoleId", "Ruolo personalizzato") ?? null };
 }
 
 // ─── Attributi personalizzati (definizioni in client_field_definitions) ─────

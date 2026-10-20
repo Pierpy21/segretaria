@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMembership } from "@/lib/db";
 import AppShell from "@/app/components/layout/app-shell";
 
-/** Area contabile: profilo contabile e dottore (owner/admin). Lo staff torna alla home. */
+/** Area contabile: profilo contabile e titolare (owner/admin). Lo staff torna alla home. */
 export default async function ContabileLayout({ children }: { children: ReactNode }) {
   await connection(); // sessione per richiesta: mai prerender statico
   const membership = await getCurrentMembership();

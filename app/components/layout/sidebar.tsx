@@ -8,7 +8,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMe, roleLabel, initialsOf } from "@/app/hooks/use-me";
 import { SECTORS } from "@/app/constants/sectors";
 import { useSidebarBadges } from "@/app/hooks/use-sidebar-badges";
-import { visibleNavItems, type NavArea } from "@/app/constants/navigation";
+import { visibleNavItems, navText, type NavArea } from "@/app/constants/navigation";
+import { useTerms } from "@/app/hooks/use-terms";
 
 interface SidebarProps {
   area: NavArea;
@@ -23,16 +24,17 @@ function formatBadge(count: number): string {
 export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { data: me } = useMe();
+  const terms = useTerms();
   // Testi del settore solo quando /api/me è caricato, per non mostrare quelli sbagliati
   const sector = me?.company ? SECTORS[me.company.sector] : null;
   // Ricaricato anche al cambio di pagina
   const badges = useSidebarBadges(pathname);
   const [signingOut, setSigningOut] = useState(false);
 
-  const items = visibleNavItems(area, me?.company?.role);
+  const items = visibleNavItems(area, me);
   const email = me?.user.email ?? null;
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
-  const role = roleLabel(me?.company?.role);
+  const role = roleLabel(me);
 
   async function signOut() {
     setSigningOut(true);
@@ -90,6 +92,7 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
         </p>
 
         {items.map(({ href, label, icon: Icon, badge }) => {
+          const text = navText(label, terms);
           const active = pathname === href;
           const count = badge && badges ? badges[badge] : 0;
           return (
@@ -105,7 +108,7 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
                 }`}
             >
               <Icon size={16} className="flex-shrink-0" />
-              <span className="flex-1 leading-tight text-[13px]">{label}</span>
+              <span className="flex-1 leading-tight text-[13px]">{text}</span>
 
               {count > 0 && (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full

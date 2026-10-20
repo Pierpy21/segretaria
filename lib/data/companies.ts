@@ -1,8 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { withUser } from "@/lib/db";
-import { companies } from "@/drizzle/schema";
 import type { Sector } from "@/app/types/clients";
 import { getCalendarTimeZone } from "@/lib/calendar-sync/time";
 import { ConflictError, ValidationError, pgConstraintName } from "@/lib/errors";
@@ -17,13 +16,14 @@ export interface CreatedCompany {
   id: string;
   name: string;
   slug: string;
+  templateVersion: number;
 }
 
 /**
  * Crea lo studio e iscrive l'utente come owner (funzione SECURITY DEFINER create_company).
- * Imposta il settore e i campi personalizzati di default (seed_client_field_defaults, SECURITY INVOKER:
- * le policy di scrittura valgono; l'owner è iscritto dal trigger AFTER INSERT sulla stessa tx).
- * Con seedDemo popola i dati demo nella stessa transazione.
+ * Applica il preset di settore (apply_vertical_template, SECURITY INVOKER: valgono le policy;
+ * copia terminologia, campi, moduli e tipi di appuntamento). L'owner è iscritto dal trigger
+ * AFTER INSERT sulla stessa tx. Con seedDemo popola i dati demo nella stessa transazione.
  * Lo slug ha un suffisso casuale; in caso di collisione si riprova.
  */
 export async function createCompany(name: string, seedDemo: boolean, sector: Sector): Promise<CreatedCompany> {
@@ -36,20 +36,23 @@ export async function createCompany(name: string, seedDemo: boolean, sector: Sec
   for (let attempt = 1; ; attempt++) {
     const slug = `${base}-${randomBytes(3).toString("hex")}`;
     try {
-      const id = await withUser(async (tx) => {
+      const created = await withUser(async (tx) => {
         const rows = (await tx.execute(
           sql`select public.create_company(${trimmed}, ${slug}) as id`
         )) as unknown as Array<{ id: string }>;
         const companyId = rows[0]?.id;
         if (!companyId) throw new Error("create_company non ha restituito un id");
 
-        await tx.update(companies).set({ sector }).where(eq(companies.id, companyId));
-        await tx.execute(sql`select public.seed_client_field_defaults(${companyId}, ${sector})`);
+        const versions = (await tx.execute(
+          sql`select public.apply_vertical_template(${companyId}, ${sector}) as version`
+        )) as unknown as Array<{ version: number }>;
+        const templateVersion = Number(versions[0]?.version);
+        if (!Number.isInteger(templateVersion)) throw new Error("apply_vertical_template non ha restituito una versione");
 
         if (seedDemo) await seedDemoData(tx, companyId, tz, sector);
-        return companyId;
+        return { id: companyId, templateVersion };
       });
-      return { id, name: trimmed, slug };
+      return { id: created.id, name: trimmed, slug, templateVersion: created.templateVersion };
     } catch (err) {
       const constraint = pgConstraintName(err);
       if (constraint === ALREADY_MEMBER_CONSTRAINT) {

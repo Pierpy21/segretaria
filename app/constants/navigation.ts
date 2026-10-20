@@ -1,18 +1,26 @@
-import { LayoutDashboard, Users, MessageSquare, Calendar, Wrench, FileText, Wallet, type LucideIcon } from "lucide-react";
-import { hasPermission, profileOf, type AccessProfile, type Permission } from "@/lib/auth/permissions";
-import type { CompanyRole, SidebarBadges } from "@/app/types/api";
+import { LayoutDashboard, Users, MessageSquare, Calendar, Wrench, FileText, Wallet, Settings, type LucideIcon } from "lucide-react";
+import { can, type AccessProfile, type Permission } from "@/lib/auth/permissions";
+import type { MeResponse, SidebarBadges } from "@/app/types/api";
+import type { Terms } from "@/app/types/settings";
 
 export type NavArea = "studio" | "contabile";
+
+/** Testo fisso oppure ricavato dalla terminologia dello studio */
+export type NavText = string | ((t: Terms) => string);
+
+export function navText(text: NavText, terms: Terms): string {
+  return typeof text === "function" ? text(terms) : text;
+}
 
 export interface NavItem {
   area: NavArea;
   href: string;
-  label: string;
+  label: NavText;
   /** Titolo e sottotitolo mostrati nell'header della shell */
-  title: string;
-  subtitle: string;
+  title: NavText;
+  subtitle: NavText;
   icon: LucideIcon;
-  /** La voce è visibile solo con questo permesso */
+  /** La voce è visibile solo con questo permesso (effettivo: include i moduli attivi) */
   permission: Permission;
   /** Se presente, la voce è visibile solo a questi profili */
   profiles?: AccessProfile[];
@@ -27,39 +35,45 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutDashboard, permission: "reports:read",
   },
   {
-    area: "studio", href: "/clienti", label: "Clienti",
-    title: "Elenco & Schede Clienti",
-    subtitle: "Anagrafica studio, storico prestazioni e schede con campi del settore",
+    area: "studio", href: "/clienti", label: t => t.clientPlural,
+    title: t => `Elenco & Schede ${t.clientPlural}`,
+    subtitle: t => t.clientsSubtitle,
     icon: Users, permission: "clients:read", badge: "patients",
   },
   {
     area: "studio", href: "/chat", label: "Chat",
-    title: "Chat & Comunicazioni Pazienti",
-    subtitle: "Triage urgenze odontoiatriche, recall semestrali e messaggistica WhatsApp",
+    title: t => `Chat & Comunicazioni ${t.clientPlural}`,
+    subtitle: t => t.chatSubtitle,
     icon: MessageSquare, permission: "chat:read", badge: "chat",
   },
   {
     area: "studio", href: "/agenda", label: "Agenda & Appuntamenti",
     title: "Agenda & Appuntamenti",
-    subtitle: "Planning poltrone cliniche, igiene e chirurgia sincronizzato con Google/Apple",
+    subtitle: t => t.agendaSubtitle,
     icon: Calendar, permission: "calendar:read", badge: "calendar",
   },
   {
-    area: "studio", href: "/attivita", label: "Attività Cliniche & Studio",
-    title: "Attività Cliniche & Studio",
-    subtitle: "Kanban operativo: sterilizzazione, laboratorio odontotecnico e ordini forniture",
+    area: "studio", href: "/attivita", label: t => t.tasksLabel,
+    title: t => t.tasksLabel,
+    subtitle: t => t.tasksSubtitle,
     icon: Wrench, permission: "tasks:read", badge: "tasks",
   },
   {
-    area: "studio", href: "/preventivi", label: "Piani di Cura & Preventivi",
-    title: "Piani di Cura & Preventivi",
-    subtitle: "Preventivi clinici, piani di trattamento 3D e accettazione pazienti",
+    area: "studio", href: "/preventivi", label: t => t.quotePlural,
+    title: t => t.quotePlural,
+    subtitle: t => t.quotesSubtitle,
     icon: FileText, permission: "quotes:read", badge: "quotes",
   },
   {
     area: "studio", href: "/contabile", label: "Area contabile",
     title: "Area contabile", subtitle: "Riepilogo economico, preventivi e anagrafica dello studio",
-    icon: Wallet, permission: "payments:read", profiles: ["dottore"],
+    icon: Wallet, permission: "payments:read", profiles: ["titolare"],
+  },
+  {
+    area: "studio", href: "/impostazioni", label: "Impostazioni",
+    title: "Impostazioni",
+    subtitle: "Settore, moduli, terminologia, tipi di appuntamento e ruoli dello studio",
+    icon: Settings, permission: "settings:manage", profiles: ["titolare"],
   },
   {
     area: "contabile", href: "/contabile", label: "Riepilogo",
@@ -67,31 +81,34 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutDashboard, permission: "reports:read",
   },
   {
-    area: "contabile", href: "/contabile/preventivi", label: "Preventivi",
-    title: "Piani di Cura & Preventivi",
-    subtitle: "Preventivi clinici, piani di trattamento 3D e accettazione pazienti",
+    area: "contabile", href: "/contabile/preventivi", label: t => t.quotePlural,
+    title: t => t.quotePlural,
+    subtitle: t => t.quotesSubtitle,
     icon: FileText, permission: "quotes:read",
   },
   {
-    area: "contabile", href: "/contabile/clienti", label: "Clienti",
-    title: "Anagrafica Clienti", subtitle: "Dati anagrafici e assicurativi dei clienti dello studio",
+    area: "contabile", href: "/contabile/clienti", label: t => t.clientPlural,
+    title: t => `Anagrafica ${t.clientPlural}`,
+    subtitle: t => t.clientsSubtitle,
     icon: Users, permission: "clients:read",
   },
   {
     area: "contabile", href: "/", label: "Area studio",
     title: "", subtitle: "",
-    icon: LayoutDashboard, permission: "reports:read", profiles: ["dottore"],
+    icon: LayoutDashboard, permission: "reports:read", profiles: ["titolare"],
   },
 ];
 
-/** Voci dell'area visibili al ruolo (permesso + profilo). Vuoto se nessun ruolo. */
-export function visibleNavItems(area: NavArea, role: CompanyRole | null | undefined): NavItem[] {
-  if (!role) return [];
-  const profile = profileOf(role);
+/**
+ * Voci dell'area visibili all'utente: permesso effettivo (ruolo o ruolo personalizzato, moduli attivi)
+ * e profilo. Vuoto se non c'è uno studio.
+ */
+export function visibleNavItems(area: NavArea, me: MeResponse | null | undefined): NavItem[] {
+  if (!me?.company) return [];
   return NAV_ITEMS.filter(
     item =>
       item.area === area &&
-      hasPermission(role, item.permission) &&
-      (!item.profiles || item.profiles.includes(profile))
+      can(me.permissions, item.permission) &&
+      (!item.profiles || (me.profile !== null && item.profiles.includes(me.profile)))
   );
 }

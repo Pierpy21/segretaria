@@ -20,6 +20,7 @@ import {
   uniqueIndex,
   check,
   foreignKey,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { authUsers } from "drizzle-orm/supabase";
@@ -29,11 +30,10 @@ import type {
   FieldEntity,
   InsuranceCardData,
   PreviousVisitNote,
-  SelectedToothData,
   Sector,
   TreatmentHistoryItem,
-  XRayFinding,
 } from "@/app/types/clients";
+import type { ModuleKey, Terms } from "@/app/types/settings";
 
 // ============================================================================
 // ENUM TYPES
@@ -98,6 +98,10 @@ export const companies = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     sector: text("sector").$type<Sector>().notNull().default("generico"),
+    /** Versione del preset (vertical_templates) applicata allo studio */
+    templateVersion: integer("template_version"),
+    /** Terminologia dello studio (copiata dal preset, personalizzabile) */
+    terms: jsonb("terms").$type<Partial<Terms>>().notNull().default({}),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -119,6 +123,8 @@ export const companyMembers = pgTable(
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("member"),
+    /** Ruolo personalizzato (company_roles), solo per member/accountant. FK composita nella migration */
+    customRoleId: uuid("custom_role_id"),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -154,6 +160,8 @@ export const calendarEvents = pgTable(
     externalEtag: text("external_etag"),
     /** Bene del cliente collegato (FK composita + ON DELETE SET NULL nella migration) */
     assetId: uuid("asset_id"),
+    /** Tipo di appuntamento dello studio (FK composita + ON DELETE SET NULL nella migration) */
+    appointmentTypeId: uuid("appointment_type_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -442,8 +450,6 @@ export const clientClinical = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     recommendation: text("recommendation").notNull().default(""),
     previousVisit: jsonb("previous_visit").$type<PreviousVisitNote>().notNull().default({} as PreviousVisitNote),
-    selectedTooth: jsonb("selected_tooth").$type<SelectedToothData>().notNull().default({} as SelectedToothData),
-    xrayFindings: jsonb("xray_findings").$type<XRayFinding[]>().notNull().default([] as XRayFinding[]),
     treatments: jsonb("treatments").$type<TreatmentHistoryItem[]>().notNull().default([] as TreatmentHistoryItem[]),
     /** Valori dei campi con sensitive = true */
     attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
@@ -494,6 +500,98 @@ export const clientFieldDefinitions = pgTable(
   ]
 );
 
+// --------------------------------------------------------------------------
+// vertical_templates — preset versionati per settore (catalogo globale, sola lettura)
+// --------------------------------------------------------------------------
+export interface VerticalTemplatePayload {
+  terms: Terms;
+  modules: Record<ModuleKey, boolean>;
+  appointment_types: { key: string; label: string; color: string; duration_minutes: number; position: number }[];
+  fields: {
+    entity: FieldEntity; client_type: string; key: string; label: string; type: ClientFieldType;
+    options: string[]; required: boolean; position: number; sensitive: boolean;
+  }[];
+}
+
+export const verticalTemplates = pgTable(
+  "vertical_templates",
+  {
+    key: text("key").notNull(),
+    version: integer("version").notNull(),
+    label: text("label").notNull(),
+    description: text("description").notNull().default(""),
+    payload: jsonb("payload").$type<VerticalTemplatePayload>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.key, table.version] })]
+);
+
+// --------------------------------------------------------------------------
+// company_modules — moduli attivabili per studio (riga assente = attivo)
+// --------------------------------------------------------------------------
+export const companyModules = pgTable(
+  "company_modules",
+  {
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    module: text("module").$type<ModuleKey>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.companyId, table.module] })]
+);
+
+// --------------------------------------------------------------------------
+// company_roles — ruoli personalizzati composti da permessi del catalogo
+// --------------------------------------------------------------------------
+export const companyRoles = pgTable(
+  "company_roles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("company_roles_key_unique").on(table.companyId, table.key),
+    unique("company_roles_id_company_id_key").on(table.id, table.companyId),
+    index("idx_company_roles_company").on(table.companyId),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// company_appointment_types — tipi di appuntamento dello studio (dal preset)
+// --------------------------------------------------------------------------
+export const companyAppointmentTypes = pgTable(
+  "company_appointment_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    color: text("color").notNull().default("#E04A95"),
+    durationMinutes: integer("duration_minutes").notNull().default(30),
+    position: integer("position").notNull().default(0),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("company_appointment_types_key_unique").on(table.companyId, table.key),
+    unique("company_appointment_types_id_company_id_key").on(table.id, table.companyId),
+    index("idx_company_appointment_types_company").on(table.companyId, table.position),
+  ]
+);
+
 // ============================================================================
 // TYPE EXPORTS — Use these instead of supabase.ts types
 // ============================================================================
@@ -533,3 +631,8 @@ export type ClientClinicalRow = typeof clientClinical.$inferSelect;
 export type NewClientClinicalRow = typeof clientClinical.$inferInsert;
 export type ClientFieldDefinitionRow = typeof clientFieldDefinitions.$inferSelect;
 export type NewClientFieldDefinitionRow = typeof clientFieldDefinitions.$inferInsert;
+
+export type CompanyModule = typeof companyModules.$inferSelect;
+export type CompanyRoleRow = typeof companyRoles.$inferSelect;
+export type CompanyAppointmentType = typeof companyAppointmentTypes.$inferSelect;
+export type VerticalTemplate = typeof verticalTemplates.$inferSelect;

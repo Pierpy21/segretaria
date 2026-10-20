@@ -5,8 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import Sidebar from "./sidebar";
 import Header from "./header";
-import { NAV_ITEMS, type NavArea } from "@/app/constants/navigation";
+import { NAV_ITEMS, navText, type NavArea } from "@/app/constants/navigation";
 import { useMe } from "@/app/hooks/use-me";
+import { useTerms } from "@/app/hooks/use-terms";
 
 interface AppShellProps {
   area: NavArea;
@@ -29,6 +30,7 @@ export default function AppShell({ area, children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: me } = useMe();
+  const terms = useTerms();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [syncNotice, setSyncNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   // Server snapshot null: nessun mismatch di idratazione (la data è calcolata solo lato client)
@@ -42,7 +44,10 @@ export default function AppShell({ area, children }: AppShellProps) {
         title: studioName ?? "Dashboard",
         subtitle: today && studioName ? `${today} — Benvenuto, ${studioName}` : (today ?? ""),
       }
-    : { title: current?.title ?? "", subtitle: current?.subtitle ?? "" };
+    : {
+        title: current ? navText(current.title, terms) : "",
+        subtitle: current ? navText(current.subtitle, terms) : "",
+      };
 
   // Ritorno da OAuth: /?module=calendar&sync=google-ok|google-error → /agenda con esito
   useEffect(() => {
