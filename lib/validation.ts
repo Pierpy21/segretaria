@@ -9,10 +9,12 @@ import type {
   CreateCalendarEventInput,
   CreateClientInput,
   CreateCustomRoleInput,
+  CreateInvitationInput,
   CreateMessageInput,
   CreateQuoteInput,
   CreateReminderInput,
   CreateTaskInput,
+  MemberPatch,
   OnboardingInput,
   UpdateAppointmentTypeInput,
   UpdateAssetInput,
@@ -21,7 +23,7 @@ import type {
   UpdateTaskInput,
 } from "@/app/types/api";
 import type { CompanyModules, ModuleKey, TermKey } from "@/app/types/settings";
-import { CUSTOM_ROLE_PERMISSIONS, MODULE_KEYS, type Permission } from "@/lib/auth/permissions";
+import { COMPANY_ROLES, CUSTOM_ROLE_PERMISSIONS, MODULE_KEYS, type Permission } from "@/lib/auth/permissions";
 import { TERM_KEYS } from "@/lib/terms";
 import type { EventSource, ReminderPriority, ReminderStatus } from "@/app/types/calendar";
 import type { ColumnId, TaskPriority } from "@/app/types/maintenance";
@@ -51,7 +53,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const CLIENT_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,31}$/;
 /** Tipo bene = client_type delle definizioni entity='asset' (stesso formato delle chiavi). */
 const ASSET_TYPE_RE = /^[a-z][a-z0-9_]{0,62}$/;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 /** Chiave stabile di tipi di appuntamento e ruoli (come i CHECK SQL). */
 const KEY_RE = /^[a-z][a-z0-9_]{0,62}$/;
@@ -608,10 +610,25 @@ export function parseCustomRolePatch(body: JsonObject): UpdateCustomRoleInput {
 }
 
 /** Assegnazione del ruolo personalizzato a un membro: null = torna al ruolo di sistema. */
-export function parseMemberPatch(body: JsonObject): { customRoleId: string | null } {
-  if (body.customRoleId === undefined) throw new ValidationError("customRoleId obbligatorio (null per rimuovere)");
-  if (body.customRoleId === null) return { customRoleId: null };
-  return { customRoleId: optUuid(body, "customRoleId", "Ruolo personalizzato") ?? null };
+/** PATCH membro: role e/o customRoleId (null = rimuovi il ruolo personalizzato). Almeno uno dei due. */
+export function parseMemberPatch(body: JsonObject): MemberPatch {
+  const role = optEnum(body, "role", COMPANY_ROLES, "Ruolo");
+  const hasCustomRole = body.customRoleId !== undefined;
+  if (role === undefined && !hasCustomRole) {
+    throw new ValidationError("Indica il ruolo o il ruolo personalizzato da assegnare");
+  }
+  const patch: MemberPatch = {};
+  if (role !== undefined) patch.role = role;
+  if (hasCustomRole) patch.customRoleId = optUuid(body, "customRoleId", "Ruolo personalizzato") ?? null;
+  return patch;
+}
+
+// ─── Inviti dello studio ────────────────────────────────────────────────────
+/** Email dell'invito: trim, minuscole, formato e lunghezza. Il ruolo è validato contro i permessi dell'attore in lib/data/members.ts. */
+export function parseCreateInvitationInput(body: JsonObject): CreateInvitationInput {
+  const email = reqString(body, "email", "Email", 254).toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new ValidationError("Email non valida");
+  return { email, role: reqEnum(body, "role", COMPANY_ROLES, "Ruolo") };
 }
 
 // ─── Attributi personalizzati (definizioni in client_field_definitions) ─────

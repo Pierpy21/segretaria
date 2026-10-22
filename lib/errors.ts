@@ -45,6 +45,18 @@ export function pgConstraintName(err: unknown): string | undefined {
   return undefined;
 }
 
+/** Messaggi dell'errore Postgres risalendo la catena cause di Drizzle (il messaggio del RAISE è nella cause). */
+export function pgErrorMessages(err: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = err;
+  for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
+    const message = (current as { message?: unknown }).message;
+    if (typeof message === "string") messages.push(message);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return messages;
+}
+
 export function pgErrorCode(err: unknown): string | undefined {
   let current: unknown = err;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {

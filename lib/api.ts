@@ -37,6 +37,10 @@ export function handleApiError(err: unknown): NextResponse<ApiResult<never>> {
     return apiFail("Operazione in conflitto con un dato esistente", 409);
   }
 
-  console.error("[api] errore interno", err);
+  // Mai loggare err per intero: i messaggi drizzle includono query e parametri (email, token_hash).
+  console.error("[api] errore interno", {
+    name: err instanceof Error ? err.name : "unknown",
+    code,
+  });
   return apiFail("Errore interno del server", 500);
 }

@@ -138,6 +138,43 @@ export const companyMembers = pgTable(
 );
 
 // --------------------------------------------------------------------------
+// company_invitations — inviti a un membro. Il token in chiaro non è mai salvato:
+// token_hash = sha256 hex (lib/auth/invitation-token.ts). Nessuna policy DELETE.
+// --------------------------------------------------------------------------
+export const companyInvitations = pgTable(
+  "company_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: uuid("invited_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '7 days'`),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedBy: uuid("accepted_by").references(() => authUsers.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("company_invitations_token_hash_key").on(table.tokenHash),
+    uniqueIndex("company_invitations_pending_uniq")
+      .on(table.companyId, table.email)
+      .where(sql`${table.acceptedAt} is null and ${table.revokedAt} is null`),
+    index("company_invitations_company_id_idx").on(table.companyId),
+    check("company_invitations_role_check", sql`${table.role} in ('admin', 'member', 'accountant')`),
+    check(
+      "company_invitations_email_check",
+      sql`${table.email} = lower(${table.email}) and char_length(${table.email}) <= 254`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
 // calendar_events — from CalendarEventData (manuali + importati via sync)
 // --------------------------------------------------------------------------
 export const calendarEvents = pgTable(
@@ -600,6 +637,9 @@ export type NewCompany = typeof companies.$inferInsert;
 
 export type CompanyMember = typeof companyMembers.$inferSelect;
 export type NewCompanyMember = typeof companyMembers.$inferInsert;
+
+export type CompanyInvitation = typeof companyInvitations.$inferSelect;
+export type NewCompanyInvitation = typeof companyInvitations.$inferInsert;
 
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type NewCalendarEvent = typeof calendarEvents.$inferInsert;

@@ -195,7 +195,14 @@ export type { Sector, ClientFieldDefinition, ClientFieldType, ClientAttributeVal
 // POST   /api/settings/roles                 body CreateCustomRoleInput → CustomRole (201)
 // PATCH  /api/settings/roles/[id]            body UpdateCustomRoleInput → CustomRole
 // DELETE /api/settings/roles/[id]            → null (i membri tornano al ruolo di sistema)
-// PATCH  /api/settings/members/[userId]      body { customRoleId: string | null } → MemberSummary
+// ─── Membri dello studio (members:manage; chiave = userId) ──────────────────
+// GET    /api/settings/members                → MembersOverview
+// PATCH  /api/settings/members/[userId]       body MemberPatch → MemberView
+// DELETE /api/settings/members/[userId]       → { userId }
+// POST   /api/settings/invitations            body CreateInvitationInput → 201 CreateInvitationResult
+// DELETE /api/settings/invitations/[id]       → { id } (revoca)
+// GET    /api/invitations/[token]             → InvitationPreview   (solo sessione, nessuno studio)
+// POST   /api/invitations/[token]/accept      → AcceptInvitationResult (solo sessione)
 export interface SettingsResponse {
   sector: Sector;
   templateVersion: number | null;
@@ -235,6 +242,57 @@ export interface MemberSummary {
   role: CompanyRole;
   customRoleId: string | null;
   createdAt: string;
+}
+/** Membro con i flag rispetto all'utente corrente (GET /api/settings/members). */
+export interface MemberView extends MemberSummary {
+  /** È l'utente corrente */
+  isSelf: boolean;
+  /** Può modificarlo/rimuoverlo (mai se stesso) */
+  canManage: boolean;
+}
+export type InvitationStatus = "pending" | "expired" | "accepted" | "revoked";
+/** Invito non accettato né revocato (lista dello studio). */
+export interface CompanyInvitationView {
+  id: string;
+  email: string;
+  role: CompanyRole;
+  /** ISO */
+  createdAt: string;
+  /** ISO */
+  expiresAt: string;
+  status: "pending" | "expired";
+  canManage: boolean;
+}
+export interface MembersOverview {
+  members: MemberView[];
+  invitations: CompanyInvitationView[];
+}
+export interface CreateInvitationInput {
+  email: string;
+  role: CompanyRole;
+}
+export interface CreateInvitationResult {
+  invitation: CompanyInvitationView;
+  inviteUrl: string;
+  emailSent: boolean;
+}
+/** Body di PATCH /api/settings/members/[userId]: almeno uno dei due. null in customRoleId = rimuovi. */
+export interface MemberPatch {
+  role?: CompanyRole;
+  customRoleId?: string | null;
+}
+export interface InvitationPreview {
+  companyName: string;
+  role: CompanyRole;
+  email: string;
+  /** ISO */
+  expiresAt: string;
+  status: InvitationStatus;
+  emailMatches: boolean;
+}
+export interface AcceptInvitationResult {
+  companyId: string;
+  homePath: string;
 }
 export interface RolesResponse {
   roles: CustomRole[];

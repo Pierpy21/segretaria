@@ -22,6 +22,13 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Operazione non riuscita. Riprova.";
 }
 
+/** ISO → "14 giugno 2026" (solo client: nessun mismatch di idratazione) */
+export function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+}
+
 /** Scheda di una sezione delle impostazioni */
 export function SettingsCard({
   id,
