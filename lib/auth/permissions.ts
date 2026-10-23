@@ -122,6 +122,37 @@ export function hasPermission(role: CompanyRole | null | undefined, permission: 
   return role ? ROLE_PERMISSIONS[role].includes(permission) : false;
 }
 
+// ─── Gerarchia di gestione membri (members:manage) ──────────────────────────
+// Stessa regola applicata dal database (migration 20261024130000): owner ha pieni poteri,
+// admin gestisce solo member/accountant. Il prerequisito members:manage è il ruolo di sistema
+// (solo owner/admin: i ruoli personalizzati non possono averlo). Nessuno agisce su se stesso
+// (controllo nelle API).
+
+export const COMPANY_ROLES: readonly CompanyRole[] = ["owner", "admin", "member", "accountant"];
+
+const MEMBERS_MANAGERS: readonly CompanyRole[] = ["owner", "admin"];
+const OWNER_INVITABLE: readonly CompanyRole[] = ["admin", "member", "accountant"];
+const ADMIN_MANAGEABLE: readonly CompanyRole[] = ["member", "accountant"];
+
+/** Ruoli che l'attore può assegnare con un invito (mai owner). [] se non gestisce i membri. */
+export function invitableRoles(actor: CompanyRole): readonly CompanyRole[] {
+  if (!MEMBERS_MANAGERS.includes(actor)) return [];
+  return actor === "owner" ? OWNER_INVITABLE : ADMIN_MANAGEABLE;
+}
+
+/** Ruoli di sistema verso cui l'attore può cambiare un membro gestibile. [] se non gestisce i membri. */
+export function assignableRoles(actor: CompanyRole): readonly CompanyRole[] {
+  if (!MEMBERS_MANAGERS.includes(actor)) return [];
+  return actor === "owner" ? COMPANY_ROLES : ADMIN_MANAGEABLE;
+}
+
+/** true se l'attore può modificare/rimuovere un membro col ruolo target. */
+export function canManageMember(actor: CompanyRole, target: CompanyRole): boolean {
+  if (!MEMBERS_MANAGERS.includes(actor)) return false;
+  if (actor === "owner") return true;
+  return ADMIN_MANAGEABLE.includes(target);
+}
+
 export function profileOf(role: CompanyRole): AccessProfile {
   if (role === "owner" || role === "admin") return "titolare";
   return role === "accountant" ? "contabile" : "staff";

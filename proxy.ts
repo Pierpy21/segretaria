@@ -63,7 +63,11 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const redirect = NextResponse.redirect(new URL("/login", request.url));
+  const loginUrl = new URL("/login", request.url);
+  if (pathname !== "/") {
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+  }
+  const redirect = NextResponse.redirect(loginUrl);
   // Preserva eventuali cookie di sessione ripuliti/aggiornati da Supabase.
   response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
   return redirect;

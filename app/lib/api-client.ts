@@ -1,5 +1,12 @@
 import { API_ERROR, type ApiResult } from "@/app/types/api";
 
+/** /login con next = pagina corrente, così dopo l'accesso si torna dove si era (salvo già su /login) */
+function loginUrlFromHere(): string {
+  const { pathname, search } = window.location;
+  if (pathname === "/login") return "/login";
+  return `/login?next=${encodeURIComponent(`${pathname}${search}`)}`;
+}
+
 /**
  * Chiama un endpoint /api/* e restituisce direttamente data.
  * - 401 UNAUTHORIZED → redirect /login
@@ -31,7 +38,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const code = payload && !payload.success ? payload.error : `HTTP_${res.status}`;
 
   if (res.status === 401 || code === API_ERROR.UNAUTHORIZED) {
-    window.location.href = "/login";
+    window.location.href = loginUrlFromHere();
   } else if (code === API_ERROR.NO_COMPANY) {
     window.location.href = "/onboarding";
   }

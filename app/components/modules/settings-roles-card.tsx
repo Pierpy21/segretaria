@@ -7,8 +7,7 @@ import { useApiData } from "@/app/hooks/use-api-data";
 import { useTerms } from "@/app/hooks/use-terms";
 import { ErrorState, SkeletonRows } from "@/app/components/ui/async-state";
 import { CUSTOM_ROLE_PERMISSIONS, permissionModule, type Permission } from "@/lib/auth/permissions";
-import { roleTitle } from "@/lib/terms";
-import type { MemberSummary, RolesResponse, CreateCustomRoleInput, UpdateCustomRoleInput } from "@/app/types/api";
+import type { RolesResponse, CreateCustomRoleInput, UpdateCustomRoleInput } from "@/app/types/api";
 import type { CompanyModules, CustomRole, Terms } from "@/app/types/settings";
 import {
   BTN_DANGER,
@@ -59,17 +58,11 @@ function withoutRole(data: RolesResponse | null, roleId: string): RolesResponse 
   };
 }
 
-/** Cambia il ruolo personalizzato di un membro */
-function withMemberRole(data: RolesResponse | null, userId: string, customRoleId: string | null): RolesResponse | null {
-  if (!data) return data;
-  return { ...data, members: data.members.map(m => (m.userId === userId ? { ...m, customRoleId } : m)) };
-}
-
 interface RolesCardProps {
   modules: CompanyModules;
 }
 
-/** Ruoli personalizzati (permessi dal catalogo) e assegnazione ai membri. Visibile con members:manage. */
+/** Ruoli personalizzati (permessi dal catalogo). I membri si gestiscono nella scheda "Membri dello studio". Visibile con members:manage. */
 export default function RolesCard({ modules }: RolesCardProps) {
   const terms = useTerms();
   const rolesHook = useApiData<RolesResponse>("/api/settings/roles");
@@ -83,8 +76,6 @@ export default function RolesCard({ modules }: RolesCardProps) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [memberBusy, setMemberBusy] = useState<string | null>(null);
-  const [memberError, setMemberError] = useState<string | null>(null);
 
   const groups = PERMISSION_GROUPS
     .map(g => ({ prefix: g.prefix, label: g.label(terms), permissions: CUSTOM_ROLE_PERMISSIONS.filter(p => p.startsWith(`${g.prefix}:`)) }))
@@ -169,25 +160,6 @@ export default function RolesCard({ modules }: RolesCardProps) {
     }
   }
 
-  async function changeMemberRole(member: MemberSummary, customRoleId: string | null) {
-    const previous = member.customRoleId;
-    setMemberError(null);
-    setMemberBusy(member.userId);
-    mutateRoles(d => withMemberRole(d, member.userId, customRoleId));
-    try {
-      const updated = await apiFetch<MemberSummary>(`/api/settings/members/${encodeURIComponent(member.userId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ customRoleId }),
-      });
-      mutateRoles(d => withMemberRole(d, updated.userId, updated.customRoleId));
-    } catch (err) {
-      mutateRoles(d => withMemberRole(d, member.userId, previous));
-      setMemberError(errorMessage(err));
-    } finally {
-      setMemberBusy(null);
-    }
-  }
-
   const editorForm = editor && (
     <form onSubmit={saveRole} className="mb-5 p-4 rounded-xl border border-line-strong bg-surface-muted/50 space-y-4" noValidate>
       <p className="text-xs font-bold text-ink">
@@ -251,14 +223,14 @@ export default function RolesCard({ modules }: RolesCardProps) {
   return (
     <SettingsCard
       id="settings-roles"
-      title="Ruoli e membri"
+      title="Ruoli personalizzati"
       description="Un ruolo personalizzato sostituisce i permessi standard del ruolo di sistema del membro."
       className="xl:col-span-2"
     >
       {rolesHook.loading ? (
         <SkeletonRows rows={3} className="h-12" />
       ) : rolesHook.error ? (
-        <ErrorState message="Impossibile caricare ruoli e membri." onRetry={reloadRoles} />
+        <ErrorState message="Impossibile caricare i ruoli personalizzati." onRetry={reloadRoles} />
       ) : (
         <>
           <div className="flex items-center justify-between gap-3 mb-3">
@@ -295,47 +267,6 @@ export default function RolesCard({ modules }: RolesCardProps) {
               })}
             </ul>
           )}
-
-          <div className="mt-6 pt-5 border-t border-line">
-            <p className="text-xs font-bold text-ink mb-2">Membri dello studio</p>
-            <FormError message={memberError} />
-
-            {members.length === 0 ? (
-              <p className="text-xs text-ink-muted">Nessun membro.</p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {members.map(member => {
-                  // Titolare: accesso completo, il ruolo non si cambia
-                  const locked = member.role === "owner" || member.role === "admin";
-                  const selectId = `member-role-${member.userId}`;
-                  return (
-                    <li key={member.userId} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-ink truncate">{member.email ?? "Utente senza email"}</p>
-                        <p className="text-[11px] text-ink-muted">{roleTitle(terms, member.role)}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <label htmlFor={selectId} className="text-[11px] font-semibold text-ink-muted">Ruolo personalizzato</label>
-                        <select
-                          id={selectId}
-                          value={member.customRoleId ?? ""}
-                          disabled={locked || memberBusy === member.userId}
-                          title={locked ? "Il titolare ha sempre accesso completo" : undefined}
-                          onChange={e => void changeMemberRole(member, e.target.value === "" ? null : e.target.value)}
-                          className={`${SETTINGS_INPUT} py-1.5 sm:w-56`}
-                        >
-                          <option value="">Nessuno (permessi standard)</option>
-                          {roles.map(role => (
-                            <option key={role.id} value={role.id}>{role.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
         </>
       )}
     </SettingsCard>

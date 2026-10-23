@@ -12,6 +12,7 @@ import ModulesCard from "@/app/components/modules/settings-modules-card";
 import TermsCard from "@/app/components/modules/settings-terms-card";
 import AppointmentTypesCard from "@/app/components/modules/settings-appointment-types-card";
 import RolesCard from "@/app/components/modules/settings-roles-card";
+import MembersCard from "@/app/components/modules/settings-members-card";
 import InventoryItemTypesCard from "@/app/components/modules/settings-inventory-types-card";
 import InventoryCategoriesCard from "@/app/components/modules/settings-inventory-categories-card";
 
@@ -46,6 +47,7 @@ export default function SettingsPage() {
       <ModulesCard settings={settings} onChange={onChange} />
       <TermsCard settings={settings} onChange={onChange} />
       <AppointmentTypesCard settings={settings} onChange={onChange} />
+      {canManageMembers && <MembersCard />}
       {settings.modules.inventory && <InventoryItemTypesCard />}
       {settings.modules.inventory && canWriteInventory && <InventoryCategoriesCard />}
       {canManageMembers && <RolesCard modules={settings.modules} />}

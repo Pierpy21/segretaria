@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle, LogIn, UserPlus } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { safeNextPath } from "@/lib/auth/safe-next";
 
 type Mode = "login" | "register";
 
@@ -21,23 +22,41 @@ function authErrorMessage(message: string): string {
   return "Operazione non riuscita. Riprova.";
 }
 
+/** Pagina di accesso: il Suspense serve a useSearchParams (Next 16). */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Destinazione dopo l'accesso: solo percorsi interni validati (default "/")
+  const next = safeNextPath(searchParams.get("next"));
+  // Errore dal link di conferma/invito non valido (vedi app/auth/confirm)
+  const confirmError =
+    searchParams.get("error") === "auth_confirm"
+      ? "Il link non è valido o è scaduto. Richiedi un nuovo invito o accedi."
+      : null;
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const visibleError = error ?? confirmError;
 
-  function switchMode(next: Mode) {
-    setMode(next);
+  function switchMode(target: Mode) {
+    setMode(target);
     setError(null);
     setInfo(null);
   }
 
-  function goHome() {
-    router.replace("/");
+  function goNext() {
+    router.replace(next);
     router.refresh();
   }
 
@@ -66,21 +85,23 @@ export default function LoginPage() {
           setError(authErrorMessage(authError.message));
           return;
         }
-        goHome();
+        goNext();
         return;
       }
 
       const { data, error: authError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
       });
       if (authError) {
         setError(authErrorMessage(authError.message));
         return;
       }
       if (data.session) {
-        goHome();
+        goNext();
         return;
       }
       setInfo("Registrazione completata. Controlla la mail e apri il link di conferma per accedere.");
@@ -149,9 +170,9 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
+          {visibleError && (
             <p role="alert" className="text-xs font-semibold text-red-600">
-              {error}
+              {visibleError}
             </p>
           )}
           {info && (
