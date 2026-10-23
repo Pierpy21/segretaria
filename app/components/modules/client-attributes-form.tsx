@@ -8,9 +8,9 @@ export const INPUT_CLASS =
   "w-full rounded-xl px-3 py-2 text-sm bg-surface border border-line-strong text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-surface-muted disabled:text-ink-muted";
 
 export interface ClientAttributesFormProps {
-  /** Tipo cliente (entity = client) oppure tipo bene (entity = asset) */
+  /** Tipo cliente (entity = client), tipo bene (asset) o tipo articolo (item) */
   clientType: string;
-  /** Default "client"; "asset" usa le definizioni dei campi dei beni */
+  /** Default "client"; "asset" e "item" usano le definizioni dei rispettivi campi */
   entity?: FieldEntity;
   values: ClientAttributes;
   onChange: (key: string, value: ClientAttributeValue) => void;
@@ -28,7 +28,7 @@ export default function ClientAttributesForm({
   readOnly = false,
   canEditSensitive = true,
 }: ClientAttributesFormProps) {
-  const entityQuery = entity === "asset" ? "entity=asset&" : "";
+  const entityQuery = entity === "client" ? "" : `entity=${entity}&`;
   const fieldsHook = useApiData<ClientFieldDefinition[]>(`/api/clients/fields?${entityQuery}type=${encodeURIComponent(clientType)}`);
 
   if (fieldsHook.loading) return <Skeleton className="h-20" />;

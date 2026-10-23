@@ -252,6 +252,197 @@ export interface UpdateCustomRoleInput {
   permissions?: Permission[];
 }
 
+// ─── Magazzino (inventory) ──────────────────────────────────────────────────
+// Modulo 'inventory'. Giacenza = somma dei movimenti (inventory_stock scritta dal trigger).
+// Quantità SEMPRE nell'unità di scarico (issueUnit se il tipo è frazionabile, altrimenti unit).
+// Errori di regola del DB (23514 inventory_*_rules) → 400 con messaggio in italiano.
+//
+// GET    /api/inventory/items[?q&categoryId&itemTypeId&belowReorder&expiringWithinDays&includeArchived]
+//        → InventoryItem[]                                              (inventory:read)
+// POST   /api/inventory/items body CreateInventoryItemInput → InventoryItem (201)   (inventory:write)
+// GET    /api/inventory/items/[id]                  → InventoryItemDetail  (inventory:read; movimenti e cliente solo con clients:read)
+// PATCH  /api/inventory/items/[id] body UpdateInventoryItemInput → InventoryItem   (inventory:write; archived true/false = archivia/ripristina)
+// POST   /api/inventory/items/[id]/movements body CreateInventoryMovementInput → InventoryMovement (201) (inventory:write)
+// GET    /api/inventory/categories                  → InventoryCategory[]  (inventory:read)
+// POST   /api/inventory/categories body CreateInventoryCategoryInput → InventoryCategory (201) (inventory:write)
+// PATCH  /api/inventory/categories/[id] body UpdateInventoryCategoryInput → InventoryCategory (inventory:write)
+// DELETE /api/inventory/categories/[id]             → null (sottocategorie e articoli restano senza padre/categoria)
+// GET    /api/inventory/item-types                  → InventoryItemType[] (inventory:read oppure settings:manage)
+// POST   /api/inventory/item-types body CreateInventoryItemTypeInput → InventoryItemType (201) (settings:manage)
+// PATCH  /api/inventory/item-types/[id] body UpdateInventoryItemTypeInput → InventoryItemType (settings:manage)
+// DELETE /api/inventory/item-types/[id]             → null (elimina se nessun articolo, altrimenti archivia)
+
+/** Flag di comportamento di un tipo di articolo (inventory_item_types). */
+export type InventoryItemTypeFlag =
+  | "trackLot" | "trackExpiry" | "trackSerial" | "consumable"
+  | "fractional" | "sellable" | "requiresClientOnIssue";
+
+export interface InventoryItemType extends Record<InventoryItemTypeFlag, boolean> {
+  id: string;
+  key: string;
+  label: string;
+  position: number;
+  /** Tipi archiviati: restano sugli articoli esistenti, non si usano per nuovi articoli */
+  archivedAt: string | null;
+}
+export interface CreateInventoryItemTypeInput extends Partial<Record<InventoryItemTypeFlag, boolean>> {
+  label: string;
+  /** Chiave stabile; se assente viene generata dalla label */
+  key?: string;
+}
+/** `fractional` non è modificabile se il tipo ha già articoli; `sellable` non si attiva se ci sono articoli senza prezzo/IVA. */
+export interface UpdateInventoryItemTypeInput extends Partial<Record<InventoryItemTypeFlag, boolean>> {
+  label?: string;
+  position?: number;
+  archived?: boolean;
+}
+
+export interface InventoryCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+export interface CreateInventoryCategoryInput {
+  name: string;
+  parentId?: string;
+}
+/** parentId: null = porta a livello radice */
+export interface UpdateInventoryCategoryInput {
+  name?: string;
+  parentId?: string | null;
+}
+
+export interface InventoryItem {
+  id: string;
+  sku: string;
+  name: string;
+  itemTypeId: string;
+  /** Tipo completo (flag utili alla UI: lotti, scadenze, matricole, vendibile, ...) */
+  itemType: InventoryItemType;
+  categoryId: string | null;
+  /** Unità di carico */
+  unit: string;
+  /** Unità di scarico (solo se frazionabile) */
+  issueUnit: string | null;
+  /** Unità di scarico per 1 unità di carico (1 se non frazionabile) */
+  conversionFactor: number;
+  reorderLevel: number | null;
+  reorderQty: number | null;
+  purchasePrice: number | null;
+  salePrice: number | null;
+  vatRate: number | null;
+  /** Valori dei campi con entity = 'item' e client_type = chiave del tipo */
+  attributes: ClientAttributes;
+  note: string | null;
+  /** Giacenza totale in unità di scarico (somma di tutti i lotti) */
+  stock: number;
+  /** Consumabile con reorderLevel non nullo e giacenza <= reorderLevel */
+  belowReorder: boolean;
+  /** Scadenza più vicina tra i lotti con giacenza > 0 (YYYY-MM-DD), null se nessuna */
+  nextExpiryDate: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+/** Lotto/scadenza con giacenza > 0 */
+export interface InventoryStockLot {
+  lot: string | null;
+  expiryDate: string | null;  // YYYY-MM-DD
+  quantity: number;
+}
+export interface InventoryItemDetail extends InventoryItem {
+  /** Lotti in giacenza (quantity > 0), per scadenza crescente */
+  lots: InventoryStockLot[];
+  /** Ultimi movimenti (più recenti prima) */
+  movements: InventoryMovement[];
+}
+export interface CreateInventoryItemInput {
+  sku: string;
+  name: string;
+  itemTypeId: string;
+  categoryId?: string;
+  /** Default 'pz' */
+  unit?: string;
+  /** Obbligatoria se il tipo è frazionabile */
+  issueUnit?: string;
+  /** Obbligatorio e > 0 se il tipo è frazionabile (default 1) */
+  conversionFactor?: number;
+  reorderLevel?: number;
+  reorderQty?: number;
+  purchasePrice?: number;
+  /** Obbligatorio se il tipo è vendibile */
+  salePrice?: number;
+  /** Obbligatoria se il tipo è vendibile (0-100) */
+  vatRate?: number;
+  attributes?: ClientAttributes;
+  note?: string;
+}
+/** Campi nullable: null = svuota. Il tipo non cambia dopo i primi movimenti. */
+export interface UpdateInventoryItemInput {
+  sku?: string;
+  name?: string;
+  itemTypeId?: string;
+  categoryId?: string | null;
+  unit?: string;
+  issueUnit?: string | null;
+  conversionFactor?: number;
+  reorderLevel?: number | null;
+  reorderQty?: number | null;
+  purchasePrice?: number | null;
+  salePrice?: number | null;
+  vatRate?: number | null;
+  /** Uniti (non sostituiti): chiave a null = svuotata */
+  attributes?: ClientAttributes;
+  note?: string | null;
+  archived?: boolean;
+}
+export interface InventoryItemFilters {
+  q?: string;
+  categoryId?: string;
+  itemTypeId?: string;
+  /** Solo articoli sotto scorta */
+  belowReorder: boolean;
+  /** Solo articoli con un lotto in giacenza che scade entro N giorni (scaduti inclusi) */
+  expiringWithinDays?: number;
+  includeArchived: boolean;
+}
+
+export type InventoryMovementType = "carico" | "scarico" | "rettifica" | "reso";
+export interface InventoryMovement {
+  id: string;
+  itemId: string;
+  movementType: InventoryMovementType;
+  /** Con segno, unità di scarico: + carico/reso/rettifica in, − scarico/rettifica out */
+  quantity: number;
+  lot: string | null;
+  expiryDate: string | null;
+  serial: string | null;
+  unitCost: number | null;
+  /** Codice applicativo del cliente (null se assente o senza permesso clients:read) */
+  clientId: string | null;
+  clientName: string | null;
+  appointmentId: string | null;
+  taskId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+export interface CreateInventoryMovementInput {
+  movementType: InventoryMovementType;
+  /** Sempre positiva: il segno lo applica il backend */
+  quantity: number;
+  /** Obbligatoria per le rettifiche, vietata per le altre */
+  direction?: "in" | "out";
+  /** true = quantità espressa in unità di carico (solo articoli frazionabili): convertita con conversionFactor */
+  inLoadUnit?: boolean;
+  lot?: string;
+  expiryDate?: string;  // YYYY-MM-DD
+  serial?: string;
+  unitCost?: number;
+  /** Codice applicativo del cliente (obbligatorio per gli scarichi dei tipi che lo richiedono) */
+  clientId?: string;
+  reason?: string;
+}
+
 // ─── Badge sidebar (contatori reali) ────────────────────────────────────────
 // GET /api/badges → SidebarBadges. 0 = nessun badge mostrato.
 export interface SidebarBadges {
@@ -265,4 +456,6 @@ export interface SidebarBadges {
   tasks: number;
   /** Preventivi da gestire (status pending_ai) */
   quotes: number;
+  /** Articoli consumabili sotto scorta minima, non archiviati (inventory:read) */
+  inventory: number;
 }

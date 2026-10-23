@@ -3,7 +3,18 @@ import { NextResponse } from "next/server";
 import { API_ERROR, type ApiResult } from "@/app/types/api";
 import { CalendarSyncError } from "@/lib/calendar-sync/errors";
 import { NoCompanyError, UnauthorizedError } from "@/lib/db";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError, pgErrorCode } from "@/lib/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  pgConstraintName,
+  pgErrorCode,
+  pgMessage,
+} from "@/lib/errors";
+
+/** Vincoli 23514 del magazzino: il messaggio RAISE è pensato per l'utente (400). */
+const INVENTORY_RULE_CONSTRAINTS = new Set(["inventory_movement_rules", "inventory_item_rules"]);
 
 /** Risposta di successo: { success: true, data } */
 export function apiOk<T>(data: T, status = 200): NextResponse<ApiResult<T>> {
@@ -35,6 +46,13 @@ export function handleApiError(err: unknown): NextResponse<ApiResult<never>> {
   }
   if (code === "23505") {
     return apiFail("Operazione in conflitto con un dato esistente", 409);
+  }
+  if (code === "23514") {
+    const constraint = pgConstraintName(err);
+    const message = pgMessage(err);
+    if (constraint && INVENTORY_RULE_CONSTRAINTS.has(constraint) && message) {
+      return apiFail(message, 400);
+    }
   }
 
   console.error("[api] errore interno", err);

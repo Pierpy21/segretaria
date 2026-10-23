@@ -8,7 +8,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMe, roleLabel, initialsOf } from "@/app/hooks/use-me";
 import { SECTORS } from "@/app/constants/sectors";
 import { useSidebarBadges } from "@/app/hooks/use-sidebar-badges";
-import { visibleNavItems, navText, type NavArea } from "@/app/constants/navigation";
+import { currentNavItem, visibleNavItems, navText, type NavArea } from "@/app/constants/navigation";
 import { useTerms } from "@/app/hooks/use-terms";
 
 interface SidebarProps {
@@ -32,6 +32,7 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
   const [signingOut, setSigningOut] = useState(false);
 
   const items = visibleNavItems(area, me);
+  const activeHref = currentNavItem(area, pathname ?? "")?.href;
   const email = me?.user.email ?? null;
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
   const role = roleLabel(me);
@@ -93,7 +94,7 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
 
         {items.map(({ href, label, icon: Icon, badge }) => {
           const text = navText(label, terms);
-          const active = pathname === href;
+          const active = href === activeHref;
           const count = badge && badges ? badges[badge] : 0;
           return (
             <Link

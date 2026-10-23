@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import Sidebar from "./sidebar";
 import Header from "./header";
-import { NAV_ITEMS, navText, type NavArea } from "@/app/constants/navigation";
+import { currentNavItem, navText, type NavArea } from "@/app/constants/navigation";
 import { useMe } from "@/app/hooks/use-me";
 import { useTerms } from "@/app/hooks/use-terms";
 
@@ -37,7 +37,7 @@ export default function AppShell({ area, children }: AppShellProps) {
   const today = useSyncExternalStore(noopSubscribe, formatToday, () => null);
 
   const studioName = me?.company?.name ?? null;
-  const current = NAV_ITEMS.find(item => item.area === area && item.href === pathname);
+  const current = currentNavItem(area, pathname);
   const isDashboard = area === "studio" && pathname === "/";
   const { title, subtitle } = isDashboard
     ? {
