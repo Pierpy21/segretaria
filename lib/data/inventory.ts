@@ -75,7 +75,12 @@ function isBelowReorder(consumable: boolean, reorderLevel: number | null, stock:
   return consumable && reorderLevel !== null && stock <= reorderLevel;
 }
 
-function toItem(item: InventoryItemRow, type: InventoryItemTypeRow, stock: number): InventoryItem {
+function toItem(
+  item: InventoryItemRow,
+  type: InventoryItemTypeRow,
+  stock: number,
+  nextExpiryDate: string | null,
+): InventoryItem {
   const reorderLevel = nullableNumber(item.reorderLevel);
   return {
     id: item.id,
@@ -96,6 +101,7 @@ function toItem(item: InventoryItemRow, type: InventoryItemTypeRow, stock: numbe
     note: item.note,
     stock,
     belowReorder: isBelowReorder(type.consumable, reorderLevel, stock),
+    nextExpiryDate,
     archivedAt: item.archivedAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
@@ -255,6 +261,10 @@ function stockTotalsOf(tx: Tx, companyId: string) {
     .select({
       itemId: inventoryStock.itemId,
       total: sql<string>`sum(${inventoryStock.quantity})`.as("total"),
+      // ::text: data YYYY-MM-DD indipendente dal parsing del driver.
+      nextExpiry: sql<string | null>`min(case when ${inventoryStock.quantity} > 0 then ${inventoryStock.expiryDate} end)::text`.as(
+        "next_expiry",
+      ),
     })
     .from(inventoryStock)
     .where(eq(inventoryStock.companyId, companyId))
@@ -510,6 +520,7 @@ async function findItems(tx: Tx, companyId: string, f: Partial<InventoryItemFilt
       item: inventoryItems,
       itemType: inventoryItemTypes,
       stock: sql<string>`coalesce(${totals.total}, 0)`,
+      nextExpiry: totals.nextExpiry,
     })
     .from(inventoryItems)
     .innerJoin(
@@ -539,7 +550,7 @@ async function findItems(tx: Tx, companyId: string, f: Partial<InventoryItemFilt
       ),
     )
     .orderBy(asc(inventoryItems.name), asc(inventoryItems.sku));
-  return rows.map((r) => toItem(r.item, r.itemType, Number(r.stock)));
+  return rows.map((r) => toItem(r.item, r.itemType, Number(r.stock), r.nextExpiry ?? null));
 }
 
 export async function listInventoryItems(

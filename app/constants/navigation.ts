@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, MessageSquare, Calendar, Wrench, FileText, Wallet, Settings, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, MessageSquare, Calendar, Wrench, FileText, Wallet, Settings, Package, type LucideIcon } from "lucide-react";
 import { can, type AccessProfile, type Permission } from "@/lib/auth/permissions";
 import type { MeResponse, SidebarBadges } from "@/app/types/api";
 import type { Terms } from "@/app/types/settings";
@@ -65,6 +65,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: FileText, permission: "quotes:read", badge: "quotes",
   },
   {
+    area: "studio", href: "/magazzino", label: t => t.inventoryLabel,
+    title: t => t.inventoryLabel,
+    subtitle: t => t.inventorySubtitle,
+    icon: Package, permission: "inventory:read", badge: "inventory",
+  },
+  {
     area: "studio", href: "/contabile", label: "Area contabile",
     title: "Area contabile", subtitle: "Riepilogo economico, preventivi e anagrafica dello studio",
     icon: Wallet, permission: "payments:read", profiles: ["titolare"],
@@ -98,6 +104,20 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutDashboard, permission: "reports:read", profiles: ["titolare"],
   },
 ];
+
+/**
+ * Voce di menu della pagina corrente: corrispondenza esatta oppure per prefisso (es. /magazzino/[id]
+ * → /magazzino). Con più corrispondenze vince quella più specifica.
+ */
+export function currentNavItem(area: NavArea, pathname: string): NavItem | undefined {
+  let best: NavItem | undefined;
+  for (const item of NAV_ITEMS) {
+    if (item.area !== area) continue;
+    const matches = item.href === pathname || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+    if (matches && (!best || item.href.length > best.href.length)) best = item;
+  }
+  return best;
+}
 
 /**
  * Voci dell'area visibili all'utente: permesso effettivo (ruolo o ruolo personalizzato, moduli attivi)

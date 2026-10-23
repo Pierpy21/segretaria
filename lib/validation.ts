@@ -244,6 +244,13 @@ export function parseEntityParam(value: string | null): FieldEntity {
   throw new ValidationError("Entità non valida");
 }
 
+/** Tipo articolo opzionale (query `type` con entity=item): stesso formato chiave dei tipi. */
+export function parseItemTypeParam(value: string | null): string | undefined {
+  if (value === null || value === "") return undefined;
+  if (!ASSET_TYPE_RE.test(value)) throw new ValidationError("Tipo di articolo non valido");
+  return value;
+}
+
 /** Tipo bene opzionale (query `type` con entity=asset): formato chiave, non settore. */
 export function parseAssetTypeParam(value: string | null): string | undefined {
   if (value === null || value === "") return undefined;

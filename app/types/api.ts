@@ -338,6 +338,8 @@ export interface InventoryItem {
   stock: number;
   /** Consumabile con reorderLevel non nullo e giacenza <= reorderLevel */
   belowReorder: boolean;
+  /** Scadenza più vicina tra i lotti con giacenza > 0 (YYYY-MM-DD), null se nessuna */
+  nextExpiryDate: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
