@@ -715,6 +715,13 @@ export async function updateInventoryItem(
     salePrice: patch.salePrice !== undefined ? patch.salePrice : nullableNumber(item.salePrice),
     vatRate: patch.vatRate !== undefined ? patch.vatRate : nullableNumber(item.vatRate),
   });
+  // La giacenza è nell'unità di scarico: con movimenti unità e fattore non cambiano.
+  if (
+    (rules.issueUnit !== item.issueUnit || rules.conversionFactor !== Number(item.conversionFactor))
+    && await hasMovements(tx, companyId, id)
+  ) {
+    throw new ValidationError("Unità di scarico e fattore di conversione non si possono cambiare: l'articolo ha già movimenti");
+  }
   set.issueUnit = rules.issueUnit;
   set.conversionFactor = String(rules.conversionFactor);
 

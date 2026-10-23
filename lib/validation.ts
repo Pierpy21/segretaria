@@ -651,7 +651,7 @@ const QTY_OPTS: DecimalOptions = { min: 0, max: 1_000_000_000, decimals: 3 };
 const QTY_POSITIVE_OPTS: DecimalOptions = { ...QTY_OPTS, exclusiveMin: true };
 const CONVERSION_OPTS: DecimalOptions = { min: 0, max: 1_000_000, decimals: 4, exclusiveMin: true };
 const PRICE_OPTS: DecimalOptions = { min: 0, max: 1_000_000_000, decimals: 2 };
-const UNIT_COST_OPTS: DecimalOptions = { min: 0, max: 100_000_000, decimals: 4 };
+const UNIT_COST_OPTS: DecimalOptions = { min: 0, max: 99_999_999, decimals: 4 };
 const VAT_OPTS: DecimalOptions = { min: 0, max: 100, decimals: 2 };
 
 function decimalValue(v: unknown, label: string, o: DecimalOptions): number {

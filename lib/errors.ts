@@ -32,7 +32,6 @@ export class NotFoundError extends Error {
   }
 }
 
-/** Codice Postgres (es. "42501", "23505") risalendo la catena cause di Drizzle. */
 /** Nome del vincolo violato (constraint_name del driver, o CONSTRAINT di RAISE), risalendo la catena cause. */
 export function pgConstraintName(err: unknown): string | undefined {
   let current: unknown = err;
@@ -45,6 +44,7 @@ export function pgConstraintName(err: unknown): string | undefined {
   return undefined;
 }
 
+/** Codice Postgres (es. "42501", "23505") risalendo la catena cause di Drizzle. */
 export function pgErrorCode(err: unknown): string | undefined {
   let current: unknown = err;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
