@@ -13,6 +13,7 @@ const BADGE_PERMISSION: Record<keyof SidebarBadges, Permission> = {
   calendar: "calendar:read",
   tasks: "tasks:read",
   quotes: "quotes:read",
+  inventory: "inventory:read",
 };
 
 export async function GET() {

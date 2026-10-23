@@ -54,3 +54,19 @@ export function pgErrorCode(err: unknown): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * Messaggio dell'errore Postgres (RAISE EXCEPTION), senza il SQL che Drizzle aggiunge
+ * al proprio messaggio: si prende dal nodo della catena cause che porta il codice SQLSTATE.
+ */
+export function pgMessage(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
+    const { code, message } = current as { code?: unknown; message?: unknown };
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) {
+      return typeof message === "string" && message ? message : undefined;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
