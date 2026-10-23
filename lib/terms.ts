@@ -23,6 +23,10 @@ export const DEFAULT_TERMS: Terms = {
   statusSent: "Inviato al cliente",
   statusApproved: "Accettato dal cliente",
   statusDeclined: "Non accettato",
+  inventoryLabel: "Magazzino",
+  itemSingular: "Articolo",
+  itemPlural: "Articoli",
+  inventorySubtitle: "Articoli, giacenze e movimenti di magazzino",
 };
 
 export const TERM_KEYS = Object.keys(DEFAULT_TERMS) as TermKey[];
