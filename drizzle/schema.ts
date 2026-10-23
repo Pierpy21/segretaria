@@ -618,6 +618,8 @@ export const inventoryItemTypes = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     label: text("label").notNull(),
+    /** Etichetta del lotto in UI (es. "DOT"); NULL = "Lotto" */
+    lotLabel: text("lot_label"),
     trackLot: boolean("track_lot").notNull().default(false),
     trackExpiry: boolean("track_expiry").notNull().default(false),
     trackSerial: boolean("track_serial").notNull().default(false),
@@ -639,6 +641,10 @@ export const inventoryItemTypes = pgTable(
     index("idx_inventory_item_types_company").on(table.companyId, table.position),
     check("inventory_item_types_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
     check("inventory_item_types_label_length", sql`char_length(${table.label}) BETWEEN 1 AND 80`),
+    check(
+      "inventory_item_types_lot_label_length",
+      sql`${table.lotLabel} IS NULL OR char_length(${table.lotLabel}) BETWEEN 1 AND 40`
+    ),
   ]
 );
 

@@ -24,6 +24,16 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** Servizio esterno non disponibile o con risposta non valida → HTTP 502 (o 503/429, vedi status). */
+export class ExternalServiceError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 502) {
+    super(message);
+    this.name = "ExternalServiceError";
+    this.status = status;
+  }
+}
+
 /** Risorsa non trovata nello studio corrente → HTTP 404. */
 export class NotFoundError extends Error {
   constructor(message = "Risorsa non trovata") {

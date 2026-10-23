@@ -20,6 +20,7 @@ import {
   formatDateTime,
   formatIsoDate,
   formatQuantity,
+  lotLabelOf,
   unitOf,
 } from "@/app/components/modules/inventory-shared";
 import type { InventoryCategory, InventoryItem, InventoryItemDetail } from "@/app/types/api";
@@ -198,7 +199,9 @@ export default function InventoryItemPage({ id }: InventoryItemPageProps) {
         <div className="space-y-4 min-w-0">
           <div className="bg-surface rounded-2xl border border-line shadow-2xs overflow-hidden">
             <div className="px-4 py-3 border-b border-line bg-surface-muted/50">
-              <h3 className="text-xs font-bold text-ink">Lotti in giacenza</h3>
+              <h3 className="text-xs font-bold text-ink">
+                {item.itemType.trackLot ? `Giacenza per ${lotLabelOf(item.itemType)}` : "Giacenza"}
+              </h3>
             </div>
             {lots.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-ink-muted">Nessuna giacenza registrata.</p>
@@ -207,7 +210,7 @@ export default function InventoryItemPage({ id }: InventoryItemPageProps) {
                 <table className="w-full text-xs text-left">
                   <thead className="bg-surface-muted border-b border-line text-ink font-bold">
                     <tr>
-                      {item.itemType.trackLot && <th className="px-4 py-2.5">Lotto</th>}
+                      {item.itemType.trackLot && <th className="px-4 py-2.5">{lotLabelOf(item.itemType)}</th>}
                       {item.itemType.trackExpiry && <th className="px-4 py-2.5">Scadenza</th>}
                       <th className="px-4 py-2.5 text-right">Quantità</th>
                     </tr>
@@ -242,7 +245,7 @@ export default function InventoryItemPage({ id }: InventoryItemPageProps) {
                       <th className="px-4 py-2.5">Data</th>
                       <th className="px-4 py-2.5">Tipo</th>
                       <th className="px-4 py-2.5 text-right">Quantità</th>
-                      <th className="px-4 py-2.5">Lotto / scadenza / matricola</th>
+                      <th className="px-4 py-2.5">{lotLabelOf(item.itemType)} / scadenza / matricola</th>
                       <th className="px-4 py-2.5">{terms.clientSingular}</th>
                       <th className="px-4 py-2.5">Motivo</th>
                     </tr>

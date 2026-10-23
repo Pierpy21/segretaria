@@ -7,17 +7,21 @@ import { useApiData } from "@/app/hooks/use-api-data";
 import { useTerms } from "@/app/hooks/use-terms";
 import { ErrorState, Skeleton } from "@/app/components/ui/async-state";
 import ClientAttributesForm from "@/app/components/modules/client-attributes-form";
+import InventoryTyreCatalog from "@/app/components/modules/inventory-tyre-catalog";
 import {
   INVENTORY_INPUT,
   categoryPath,
   errorMessage,
 } from "@/app/components/modules/inventory-shared";
+import { hasTyreSizeFields, tyreAttributesFor, tyreItemName } from "@/app/constants/tyre-catalog";
 import type {
   ClientAttributes,
+  ClientFieldDefinition,
   CreateInventoryItemInput,
   InventoryCategory,
   InventoryItem,
   InventoryItemType,
+  TyreCatalogEntry,
   UpdateInventoryItemInput,
 } from "@/app/types/api";
 
@@ -192,9 +196,24 @@ export default function InventoryItemFormModal({ item, hasMovements = false, onC
   const selectableTypes = types.filter(t => t.archivedAt === null || t.id === draft.itemTypeId);
   const selectedType = types.find(t => t.id === draft.itemTypeId) ?? item?.itemType ?? null;
   const typeLocked = isEdit && hasMovements;
+  // Campi del tipo: decidono se mostrare il catalogo (solo nuovo articolo, tipo con campi di misura)
+  const typeFieldsHook = useApiData<ClientFieldDefinition[]>(
+    !isEdit && selectedType ? `/api/clients/fields?entity=item&type=${encodeURIComponent(selectedType.key)}` : null
+  );
+  const typeFieldKeys = (typeFieldsHook.data ?? []).map(f => f.key);
+  const showTyreCatalog = !isEdit && !!selectedType && !typeFieldsHook.loading && hasTyreSizeFields(typeFieldKeys);
 
   function set<K extends keyof ItemDraft>(key: K, value: ItemDraft[K]) {
     setDraft(d => ({ ...d, [key]: value }));
+  }
+
+  /** Dal catalogo: nome e campi del tipo presenti nella scheda; restano modificabili */
+  function applyTyreEntry(entry: TyreCatalogEntry) {
+    setDraft(d => ({
+      ...d,
+      name: tyreItemName(entry),
+      attributes: { ...d.attributes, ...tyreAttributesFor(entry, typeFieldKeys) },
+    }));
   }
 
   function changeType(typeId: string) {
@@ -363,6 +382,8 @@ export default function InventoryItemFormModal({ item, hasMovements = false, onC
               <label htmlFor="inv-note" className="block text-xs font-bold text-ink mb-1">Note</label>
               <textarea id="inv-note" rows={2} value={draft.note} onChange={e => set("note", e.target.value)} className={INVENTORY_INPUT} />
             </div>
+
+            {showTyreCatalog && <InventoryTyreCatalog onSelect={applyTyreEntry} />}
 
             {selectedType && (
               <fieldset className="pt-3 border-t border-line">

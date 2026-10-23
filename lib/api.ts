@@ -5,6 +5,7 @@ import { CalendarSyncError } from "@/lib/calendar-sync/errors";
 import { NoCompanyError, UnauthorizedError } from "@/lib/db";
 import {
   ConflictError,
+  ExternalServiceError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
@@ -38,6 +39,7 @@ export function handleApiError(err: unknown): NextResponse<ApiResult<never>> {
   if (err instanceof NotFoundError) return apiFail(err.message, 404);
   if (err instanceof ConflictError) return apiFail(err.message, 409);
   if (err instanceof CalendarSyncError) return apiFail(err.message, err.status);
+  if (err instanceof ExternalServiceError) return apiFail(err.message, err.status);
 
   const code = pgErrorCode(err);
   if (code === "42501") {

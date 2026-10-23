@@ -15,6 +15,7 @@ import {
   errorMessage,
   formatIsoDate,
   formatQuantity,
+  lotLabelOf,
   unitOf,
 } from "@/app/components/modules/inventory-shared";
 import type {
@@ -47,6 +48,7 @@ export default function InventoryMovementModal({ item, lots, onClose, onSaved }:
   const { data: me } = useMe();
   const type = item.itemType;
   const unit = unitOf(item);
+  const lotLabel = lotLabelOf(type);
   const canReadClients = can(me?.permissions, "clients:read");
 
   const [movementType, setMovementType] = useState<InventoryMovementType>("carico");
@@ -90,7 +92,7 @@ export default function InventoryMovementModal({ item, lots, onClose, onSaved }:
       return;
     }
     if (pickFromLots && lots.length > 0 && !selectedLot) {
-      setFormError("Seleziona il lotto da scaricare.");
+      setFormError(`Seleziona il ${lotLabel.toLowerCase()} da scaricare.`);
       return;
     }
     if (needsClient && !clientId.trim()) {
@@ -209,15 +211,15 @@ export default function InventoryMovementModal({ item, lots, onClose, onSaved }:
 
         {pickFromLots && (
           <div>
-            <label htmlFor="mv-lot-pick" className="block text-xs font-bold text-ink mb-1">Lotto da scaricare</label>
+            <label htmlFor="mv-lot-pick" className="block text-xs font-bold text-ink mb-1">{lotLabel} da scaricare</label>
             {lots.length === 0 ? (
-              <p className="text-xs text-ink-muted">Nessun lotto in giacenza.</p>
+              <p className="text-xs text-ink-muted">Nessun {lotLabel.toLowerCase()} in giacenza.</p>
             ) : (
               <select id="mv-lot-pick" value={lotKey} onChange={e => setLotKey(e.target.value)} className={INVENTORY_INPUT}>
                 <option value="">Seleziona…</option>
                 {lots.map(l => (
                   <option key={lotKeyOf(l)} value={lotKeyOf(l)}>
-                    {l.lot ?? "senza lotto"}
+                    {l.lot ?? `senza ${lotLabel.toLowerCase()}`}
                     {type.trackExpiry ? ` · scad. ${formatIsoDate(l.expiryDate)}` : ""}
                     {` · ${formatQuantity(l.quantity)} ${unit}`}
                   </option>
@@ -231,7 +233,7 @@ export default function InventoryMovementModal({ item, lots, onClose, onSaved }:
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {type.trackLot && (
               <div>
-                <label htmlFor="mv-lot" className="block text-xs font-bold text-ink mb-1">Lotto</label>
+                <label htmlFor="mv-lot" className="block text-xs font-bold text-ink mb-1">{lotLabel}</label>
                 <input id="mv-lot" value={lot} onChange={e => setLot(e.target.value)} className={INVENTORY_INPUT} />
               </div>
             )}

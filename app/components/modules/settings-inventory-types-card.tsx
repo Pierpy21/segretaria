@@ -27,6 +27,8 @@ type Flags = Record<InventoryItemTypeFlag, boolean>;
 /** Campi di un tipo in modifica o in creazione */
 interface TypeDraft {
   label: string;
+  /** Etichetta del lotto; vuota = "Lotto" */
+  lotLabel: string;
   flags: Flags;
 }
 
@@ -39,12 +41,12 @@ const EMPTY_FLAGS: Flags = {
   sellable: false,
   requiresClientOnIssue: false,
 };
-const EMPTY_DRAFT: TypeDraft = { label: "", flags: EMPTY_FLAGS };
+const EMPTY_DRAFT: TypeDraft = { label: "", lotLabel: "", flags: EMPTY_FLAGS };
 
 function draftOf(type: InventoryItemType): TypeDraft {
   const flags = { ...EMPTY_FLAGS };
   for (const { key } of ITEM_TYPE_FLAGS) flags[key] = type[key];
-  return { label: type.label, flags };
+  return { label: type.label, lotLabel: type.lotLabel ?? "", flags };
 }
 
 /** Riepilogo leggibile dei comportamenti attivi di un tipo */
@@ -86,7 +88,11 @@ export default function InventoryItemTypesCard() {
     setError(null);
     setCreating(true);
     try {
-      const body: CreateInventoryItemTypeInput = { label: newDraft.label.trim(), ...newDraft.flags };
+      const body: CreateInventoryItemTypeInput = {
+        label: newDraft.label.trim(),
+        lotLabel: newDraft.lotLabel.trim() || null,
+        ...newDraft.flags,
+      };
       const created = await apiFetch<InventoryItemType>("/api/inventory/item-types", {
         method: "POST",
         body: JSON.stringify(body),
@@ -116,7 +122,11 @@ export default function InventoryItemTypesCard() {
     setError(null);
     setBusyId(type.id);
     try {
-      const body: UpdateInventoryItemTypeInput = { label: editDraft.label.trim(), ...editDraft.flags };
+      const body: UpdateInventoryItemTypeInput = {
+        label: editDraft.label.trim(),
+        lotLabel: editDraft.lotLabel.trim() || null,
+        ...editDraft.flags,
+      };
       const updated = await apiFetch<InventoryItemType>(`/api/inventory/item-types/${encodeURIComponent(type.id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -262,6 +272,20 @@ function FlagFields({
           className={`${SETTINGS_INPUT} sm:max-w-sm`}
         />
       </div>
+      {draft.flags.trackLot && (
+        <div>
+          <label htmlFor={`${idPrefix}-lot-label`} className="block text-xs font-bold text-ink mb-1">Etichetta lotto</label>
+          <input
+            id={`${idPrefix}-lot-label`}
+            type="text"
+            maxLength={40}
+            value={draft.lotLabel}
+            onChange={e => onChange({ ...draft, lotLabel: e.target.value })}
+            placeholder="Vuoto = Lotto"
+            className={`${SETTINGS_INPUT} sm:max-w-sm`}
+          />
+        </div>
+      )}
       <fieldset>
         <legend className="text-xs font-bold text-ink mb-2">Comportamento</legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5">
