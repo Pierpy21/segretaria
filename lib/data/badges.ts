@@ -4,6 +4,7 @@ import type { Tx } from "@/lib/db";
 import { calendarEvents, clients, conversations, quotes, tasks } from "@/drizzle/schema";
 import type { SidebarBadges } from "@/app/types/api";
 import { getCalendarTimeZone, wallInZone, wallToUtcMs } from "@/lib/calendar-sync/time";
+import { inventoryBelowReorderCountSql } from "./inventory";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -68,6 +69,7 @@ export async function getSidebarBadges(tx: Tx, companyId: string): Promise<Sideb
     calendar: unknown;
     tasks: unknown;
     quotes: unknown;
+    inventory: unknown;
   }>(sql`select
       (select count(*) from ${clients} where ${and(
         eq(clients.companyId, companyId),
@@ -86,7 +88,8 @@ export async function getSidebarBadges(tx: Tx, companyId: string): Promise<Sideb
       (select count(*) from ${quotes} where ${and(
         eq(quotes.companyId, companyId),
         eq(quotes.status, "pending_ai")
-      )}) as quotes`);
+      )}) as quotes,
+      ${inventoryBelowReorderCountSql(companyId)} as inventory`);
 
   return {
     patients: toCount(row?.patients),
@@ -94,5 +97,6 @@ export async function getSidebarBadges(tx: Tx, companyId: string): Promise<Sideb
     calendar: toCount(row?.calendar),
     tasks: toCount(row?.tasks),
     quotes: toCount(row?.quotes),
+    inventory: toCount(row?.inventory),
   };
 }

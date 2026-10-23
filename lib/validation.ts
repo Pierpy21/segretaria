@@ -10,15 +10,26 @@ import type {
   CreateClientInput,
   CreateCustomRoleInput,
   CreateInvitationInput,
+  CreateInventoryCategoryInput,
+  CreateInventoryItemInput,
+  CreateInventoryItemTypeInput,
+  CreateInventoryMovementInput,
   CreateMessageInput,
   CreateQuoteInput,
   CreateReminderInput,
   CreateTaskInput,
   MemberPatch,
+  InventoryItemFilters,
+  InventoryItemTypeFlag,
+  InventoryMovementType,
   OnboardingInput,
+  TyreCatalogQuery,
   UpdateAppointmentTypeInput,
   UpdateAssetInput,
   UpdateCustomRoleInput,
+  UpdateInventoryCategoryInput,
+  UpdateInventoryItemInput,
+  UpdateInventoryItemTypeInput,
   UpdateReminderInput,
   UpdateTaskInput,
 } from "@/app/types/api";
@@ -72,7 +83,7 @@ export const CLIENT_MESSAGE_FROM = ["user", "ai-draft"] as const satisfies reado
 export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined"] as const satisfies readonly QuoteStatus[];
 export const GENDERS = ["F", "M"] as const;
 export const SECTORS = [
-  "dentale", "medico", "commercialista", "legale", "estetico", "generico",
+  "dentale", "medico", "commercialista", "legale", "estetico", "gommista", "generico",
 ] as const satisfies readonly Sector[];
 const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
 
@@ -232,7 +243,15 @@ export function parseClientTypeParam(value: string | null): Sector | undefined {
 export function parseEntityParam(value: string | null): FieldEntity {
   if (value === null || value === "" || value === "client") return "client";
   if (value === "asset") return "asset";
+  if (value === "item") return "item";
   throw new ValidationError("Entità non valida");
+}
+
+/** Tipo articolo opzionale (query `type` con entity=item): stesso formato chiave dei tipi. */
+export function parseItemTypeParam(value: string | null): string | undefined {
+  if (value === null || value === "") return undefined;
+  if (!ASSET_TYPE_RE.test(value)) throw new ValidationError("Tipo di articolo non valido");
+  return value;
 }
 
 /** Tipo bene opzionale (query `type` con entity=asset): formato chiave, non settore. */
@@ -629,6 +648,256 @@ export function parseCreateInvitationInput(body: JsonObject): CreateInvitationIn
   const email = reqString(body, "email", "Email", 254).toLowerCase();
   if (!EMAIL_RE.test(email)) throw new ValidationError("Email non valida");
   return { email, role: reqEnum(body, "role", COMPANY_ROLES, "Ruolo") };
+}
+
+// ─── Magazzino (inventory_*) ────────────────────────────────────────────────
+const INVENTORY_MOVEMENT_TYPES = ["carico", "scarico", "rettifica", "reso"] as const satisfies readonly InventoryMovementType[];
+const INVENTORY_FLAG_LABELS: Record<InventoryItemTypeFlag, string> = {
+  trackLot: "Gestione lotti",
+  trackExpiry: "Gestione scadenze",
+  trackSerial: "Gestione matricole",
+  consumable: "Consumabile",
+  fractional: "Frazionabile",
+  sellable: "Vendibile",
+  requiresClientOnIssue: "Cliente obbligatorio allo scarico",
+};
+const INVENTORY_FLAG_KEYS = Object.keys(INVENTORY_FLAG_LABELS) as InventoryItemTypeFlag[];
+
+/** Numeri decimali con limiti e cifre decimali (allineati alle NUMERIC del DB). */
+interface DecimalOptions { min: number; max: number; decimals: number; exclusiveMin?: boolean }
+const QTY_OPTS: DecimalOptions = { min: 0, max: 1_000_000_000, decimals: 3 };
+const QTY_POSITIVE_OPTS: DecimalOptions = { ...QTY_OPTS, exclusiveMin: true };
+const CONVERSION_OPTS: DecimalOptions = { min: 0, max: 1_000_000, decimals: 4, exclusiveMin: true };
+const PRICE_OPTS: DecimalOptions = { min: 0, max: 1_000_000_000, decimals: 2 };
+const UNIT_COST_OPTS: DecimalOptions = { min: 0, max: 99_999_999, decimals: 4 };
+const VAT_OPTS: DecimalOptions = { min: 0, max: 100, decimals: 2 };
+
+function decimalValue(v: unknown, label: string, o: DecimalOptions): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new ValidationError(`${label} non valido`);
+  if (v < o.min || v > o.max || (o.exclusiveMin && v === o.min)) {
+    throw new ValidationError(`${label} fuori dai limiti consentiti`);
+  }
+  const scaled = v * 10 ** o.decimals;
+  if (Math.abs(scaled - Math.round(scaled)) > 1e-6) throw new ValidationError(`${label}: massimo ${o.decimals} decimali`);
+  return v;
+}
+
+/** Numero opzionale in creazione: assente, null o "" → undefined. */
+function optDecimal(obj: JsonObject, key: string, label: string, o: DecimalOptions): number | undefined {
+  return isBlank(obj[key]) || obj[key] === "" ? undefined : decimalValue(obj[key], label, o);
+}
+
+/** Numero in patch: assente → undefined (invariato), null o "" → null (svuota). */
+function patchDecimal(obj: JsonObject, key: string, label: string, o: DecimalOptions): number | null | undefined {
+  if (obj[key] === undefined) return undefined;
+  if (obj[key] === null || obj[key] === "") return null;
+  return decimalValue(obj[key], label, o);
+}
+
+/** UUID obbligatorio di un campo del body. */
+function reqUuidField(obj: JsonObject, key: string, label: string): string {
+  const v = optUuid(obj, key, label);
+  if (v === undefined) throw new ValidationError(`${label} obbligatorio`);
+  return v;
+}
+
+/** Intero in query string (0..max). */
+function parseIntParam(value: string, label: string, max: number): number {
+  if (!/^\d+$/.test(value) || Number(value) > max) throw new ValidationError(`${label} non valido (0-${max})`);
+  return Number(value);
+}
+
+/** Filtri di GET /api/inventory/items (query string). */
+export function parseInventoryItemFilters(params: URLSearchParams): InventoryItemFilters {
+  const text = (key: string): string | undefined => params.get(key)?.trim() || undefined;
+  const q = text("q");
+  if (q && q.length > 100) throw new ValidationError("Ricerca: massimo 100 caratteri");
+  const categoryId = text("categoryId");
+  const itemTypeId = text("itemTypeId");
+  const days = text("expiringWithinDays");
+  return {
+    q,
+    categoryId: categoryId === undefined ? undefined : parseUuid(categoryId, "Categoria"),
+    itemTypeId: itemTypeId === undefined ? undefined : parseUuid(itemTypeId, "Tipo di articolo"),
+    belowReorder: parseFlagParam(params.get("belowReorder"), "Filtro sotto scorta"),
+    expiringWithinDays: days === undefined ? undefined : parseIntParam(days, "Scadenza entro (giorni)", 365),
+    includeArchived: parseFlagParam(params.get("includeArchived"), "Archiviati"),
+  };
+}
+
+/** Etichetta del lotto: assente → undefined; null o vuota → null (torna "Lotto"); max 40 caratteri. */
+function optLotLabel(obj: JsonObject): string | null | undefined {
+  const v = obj.lotLabel;
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== "string") throw new ValidationError("Etichetta del lotto non valida");
+  const t = v.trim();
+  if (t.length > 40) throw new ValidationError("Etichetta del lotto: massimo 40 caratteri");
+  return t || null;
+}
+
+/** Flag di comportamento del tipo presenti nel body (le assenti restano invariate / default del DB). */
+function parseTypeFlags(body: JsonObject): Partial<Record<InventoryItemTypeFlag, boolean>> {
+  const out: Partial<Record<InventoryItemTypeFlag, boolean>> = {};
+  for (const key of INVENTORY_FLAG_KEYS) {
+    if (body[key] === undefined) continue;
+    out[key] = optBoolean(body, key, INVENTORY_FLAG_LABELS[key], false);
+  }
+  return out;
+}
+
+export function parseInventoryItemTypeInput(body: JsonObject): CreateInventoryItemTypeInput {
+  return {
+    label: reqString(body, "label", "Nome del tipo", 80),
+    key: optKey(body, "Chiave"),
+    lotLabel: optLotLabel(body),
+    ...parseTypeFlags(body),
+  };
+}
+
+export function parseInventoryItemTypePatch(body: JsonObject): UpdateInventoryItemTypeInput {
+  const out: UpdateInventoryItemTypeInput = parseTypeFlags(body);
+  if (body.label !== undefined) out.label = reqString(body, "label", "Nome del tipo", 80);
+  if (body.lotLabel !== undefined) out.lotLabel = optLotLabel(body) ?? null;
+  if (body.position !== undefined) out.position = reqNumber(body, "position", "Posizione", { min: 0, max: 100_000, integer: true });
+  if (body.archived !== undefined) out.archived = optBoolean(body, "archived", "Archiviato", false);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+export function parseInventoryCategoryInput(body: JsonObject): CreateInventoryCategoryInput {
+  return {
+    name: reqString(body, "name", "Nome della categoria", 80),
+    parentId: optUuid(body, "parentId", "Categoria padre"),
+  };
+}
+
+/** parentId: null = porta a livello radice. */
+export function parseInventoryCategoryPatch(body: JsonObject): UpdateInventoryCategoryInput {
+  const out: UpdateInventoryCategoryInput = {};
+  if (body.name !== undefined) out.name = reqString(body, "name", "Nome della categoria", 80);
+  if (body.parentId !== undefined) {
+    out.parentId = body.parentId === null ? null : reqUuidField(body, "parentId", "Categoria padre");
+  }
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+export function parseInventoryItemInput(body: JsonObject): CreateInventoryItemInput {
+  return {
+    sku: reqString(body, "sku", "SKU", 64),
+    name: reqString(body, "name", "Nome dell'articolo", 200),
+    itemTypeId: reqUuidField(body, "itemTypeId", "Tipo di articolo"),
+    categoryId: optUuid(body, "categoryId", "Categoria"),
+    unit: optString(body, "unit", "Unità di misura", 20) || undefined,
+    issueUnit: optString(body, "issueUnit", "Unità di scarico", 20) || undefined,
+    conversionFactor: optDecimal(body, "conversionFactor", "Fattore di conversione", CONVERSION_OPTS),
+    reorderLevel: optDecimal(body, "reorderLevel", "Scorta minima", QTY_OPTS),
+    reorderQty: optDecimal(body, "reorderQty", "Quantità di riordino", QTY_OPTS),
+    purchasePrice: optDecimal(body, "purchasePrice", "Prezzo d'acquisto", PRICE_OPTS),
+    salePrice: optDecimal(body, "salePrice", "Prezzo di vendita", PRICE_OPTS),
+    vatRate: optDecimal(body, "vatRate", "Aliquota IVA", VAT_OPTS),
+    attributes: asOptionalRecord(body.attributes, "Attributi") as ClientAttributes,
+    note: optString(body, "note", "Note", 2000) || undefined,
+  };
+}
+
+/** Campi nullable: null = svuota. Il controllo di coerenza coi flag del tipo è in lib/data/inventory. */
+export function parseInventoryItemPatch(body: JsonObject): UpdateInventoryItemInput {
+  const out: UpdateInventoryItemInput = {};
+  if (body.sku !== undefined) out.sku = reqString(body, "sku", "SKU", 64);
+  if (body.name !== undefined) out.name = reqString(body, "name", "Nome dell'articolo", 200);
+  if (body.itemTypeId !== undefined) out.itemTypeId = reqUuidField(body, "itemTypeId", "Tipo di articolo");
+  if (body.categoryId !== undefined) {
+    out.categoryId = body.categoryId === null ? null : reqUuidField(body, "categoryId", "Categoria");
+  }
+  if (body.unit !== undefined) out.unit = reqString(body, "unit", "Unità di misura", 20);
+  if (body.issueUnit !== undefined) out.issueUnit = optString(body, "issueUnit", "Unità di scarico", 20) || null;
+  if (body.conversionFactor !== undefined) {
+    out.conversionFactor = decimalValue(body.conversionFactor, "Fattore di conversione", CONVERSION_OPTS);
+  }
+  if (body.reorderLevel !== undefined) out.reorderLevel = patchDecimal(body, "reorderLevel", "Scorta minima", QTY_OPTS);
+  if (body.reorderQty !== undefined) out.reorderQty = patchDecimal(body, "reorderQty", "Quantità di riordino", QTY_OPTS);
+  if (body.purchasePrice !== undefined) {
+    out.purchasePrice = patchDecimal(body, "purchasePrice", "Prezzo d'acquisto", PRICE_OPTS);
+  }
+  if (body.salePrice !== undefined) out.salePrice = patchDecimal(body, "salePrice", "Prezzo di vendita", PRICE_OPTS);
+  if (body.vatRate !== undefined) out.vatRate = patchDecimal(body, "vatRate", "Aliquota IVA", VAT_OPTS);
+  if (body.attributes !== undefined) out.attributes = asOptionalRecord(body.attributes, "Attributi") as ClientAttributes;
+  if (body.note !== undefined) out.note = optString(body, "note", "Note", 2000) || null;
+  if (body.archived !== undefined) out.archived = optBoolean(body, "archived", "Archiviato", false);
+  if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
+  return out;
+}
+
+/**
+ * Movimento di magazzino. `quantity` è sempre positiva: il segno lo applica il backend
+ * (rettifica: `direction` obbligatoria). `inLoadUnit` vale solo per articoli frazionabili.
+ */
+export function parseInventoryMovementInput(body: JsonObject): CreateInventoryMovementInput {
+  const movementType = reqEnum(body, "movementType", INVENTORY_MOVEMENT_TYPES, "Tipo di movimento");
+  const quantity = decimalValue(body.quantity, "Quantità", QTY_POSITIVE_OPTS);
+  const direction = optEnum(body, "direction", ["in", "out"] as const, "Direzione");
+  if (movementType === "rettifica" && !direction) {
+    throw new ValidationError("Per la rettifica indicare la direzione (in o out)");
+  }
+  if (movementType !== "rettifica" && direction) {
+    throw new ValidationError("La direzione si indica solo per le rettifiche");
+  }
+  const expiry = isBlank(body.expiryDate) || body.expiryDate === "" ? undefined : parseIsoDate(body.expiryDate, "Scadenza");
+  const clientRaw = optString(body, "clientId", "Cliente", 32) || undefined;
+  return {
+    movementType,
+    quantity,
+    direction,
+    inLoadUnit: optBoolean(body, "inLoadUnit", "Quantità in unità di carico", false),
+    lot: optString(body, "lot", "Lotto", 64) || undefined,
+    expiryDate: expiry,
+    serial: optString(body, "serial", "Matricola", 64) || undefined,
+    unitCost: optDecimal(body, "unitCost", "Costo unitario", UNIT_COST_OPTS),
+    clientId: clientRaw === undefined ? undefined : parseClientCode(clientRaw),
+    reason: optString(body, "reason", "Motivo", 500) || undefined,
+  };
+}
+
+// ─── Catalogo pneumatici (GET /api/inventory/catalog/tyres) ────────────────
+/** Intero in query string entro [min, max]. */
+function parseRangeIntParam(value: string, label: string, min: number, max: number): number {
+  if (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max) {
+    throw new ValidationError(`${label} non valida (${min}-${max})`);
+  }
+  return Number(value);
+}
+
+/** Cerchio in pollici: intero o .5 (es. 16, 19.5), 10-26. */
+function parseRimParam(value: string): number {
+  if (!/^\d{1,2}(\.5)?$/.test(value)) throw new ValidationError("Cerchio non valido (intero o .5, es. 16 o 19.5)");
+  const n = Number(value);
+  if (n < 10 || n > 26) throw new ValidationError("Cerchio non valido (10-26)");
+  return n;
+}
+
+/**
+ * Query del catalogo. Nessun parametro → null (si chiede solo la disponibilità del catalogo).
+ * Con parametri: width, ratio e rim obbligatori; brand facoltativo (max 60).
+ */
+export function parseTyreCatalogQuery(params: URLSearchParams): TyreCatalogQuery | null {
+  const text = (key: string): string | undefined => params.get(key)?.trim() || undefined;
+  const width = text("width");
+  const ratio = text("ratio");
+  const rim = text("rim");
+  const brand = text("brand");
+  if (width === undefined && ratio === undefined && rim === undefined && brand === undefined) return null;
+  if (width === undefined || ratio === undefined || rim === undefined) {
+    throw new ValidationError("Per la ricerca indicare larghezza, serie e cerchio");
+  }
+  if (brand !== undefined && brand.length > 60) throw new ValidationError("Marca: massimo 60 caratteri");
+  return {
+    width: parseRangeIntParam(width, "Larghezza", 100, 400),
+    ratio: parseRangeIntParam(ratio, "Serie", 20, 100),
+    rim: parseRimParam(rim),
+    brand,
+  };
 }
 
 // ─── Attributi personalizzati (definizioni in client_field_definitions) ─────

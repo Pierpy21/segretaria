@@ -3,7 +3,7 @@
 // company_appointment_types (supabase/migrations/20261020120000_vertical_templates.sql).
 
 /** Moduli attivabili per studio (company_modules.module). */
-export type ModuleKey = "agenda" | "chat" | "quotes" | "maintenance" | "sensitive_data" | "assets" | "ai_assistant";
+export type ModuleKey = "agenda" | "chat" | "quotes" | "maintenance" | "sensitive_data" | "assets" | "ai_assistant" | "inventory";
 
 /** Stato dei moduli: chiave assente = attivo. */
 export type CompanyModules = Record<ModuleKey, boolean>;
@@ -28,6 +28,10 @@ export interface Terms {
   statusSent: string;
   statusApproved: string;
   statusDeclined: string;
+  inventoryLabel: string;
+  itemSingular: string;
+  itemPlural: string;
+  inventorySubtitle: string;
 }
 
 export type TermKey = keyof Terms;

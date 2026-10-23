@@ -55,6 +55,15 @@ const TERM_GROUPS: TermGroup[] = [
       { key: "agendaSubtitle", label: "Agenda" },
       { key: "tasksSubtitle", label: "Attività" },
       { key: "quotesSubtitle", label: "Preventivi" },
+      { key: "inventorySubtitle", label: "Magazzino" },
+    ],
+  },
+  {
+    title: "Magazzino",
+    fields: [
+      { key: "inventoryLabel", label: "Nome della sezione" },
+      { key: "itemSingular", label: "Articolo (singolare)" },
+      { key: "itemPlural", label: "Articoli (plurale)" },
     ],
   },
   {

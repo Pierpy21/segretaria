@@ -13,12 +13,15 @@ import TermsCard from "@/app/components/modules/settings-terms-card";
 import AppointmentTypesCard from "@/app/components/modules/settings-appointment-types-card";
 import RolesCard from "@/app/components/modules/settings-roles-card";
 import MembersCard from "@/app/components/modules/settings-members-card";
+import InventoryItemTypesCard from "@/app/components/modules/settings-inventory-types-card";
+import InventoryCategoriesCard from "@/app/components/modules/settings-inventory-categories-card";
 
-/** Impostazioni dello studio: settore, moduli, terminologia, tipi di appuntamento, ruoli e membri. */
+/** Impostazioni dello studio: settore, moduli, terminologia, tipi di appuntamento, magazzino, ruoli e membri. */
 export default function SettingsPage() {
   const { data: me, loading: meLoading } = useMe();
   const canManage = can(me?.permissions, "settings:manage");
   const canManageMembers = can(me?.permissions, "members:manage");
+  const canWriteInventory = can(me?.permissions, "inventory:write");
 
   // Nessuna richiesta finché non si sa che l'utente può gestire lo studio
   const settingsHook = useApiData<SettingsResponse>(canManage ? "/api/settings" : null);
@@ -45,6 +48,8 @@ export default function SettingsPage() {
       <TermsCard settings={settings} onChange={onChange} />
       <AppointmentTypesCard settings={settings} onChange={onChange} />
       {canManageMembers && <MembersCard />}
+      {settings.modules.inventory && <InventoryItemTypesCard />}
+      {settings.modules.inventory && canWriteInventory && <InventoryCategoriesCard />}
       {canManageMembers && <RolesCard modules={settings.modules} />}
     </div>
   );

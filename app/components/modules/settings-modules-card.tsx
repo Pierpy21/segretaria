@@ -25,6 +25,7 @@ function moduleCopy(t: Terms): Record<ModuleKey, { label: string; description: s
     sensitive_data: { label: t.sensitiveData, description: "Campi riservati dei clienti, visibili solo con il permesso dedicato." },
     assets: { label: "Beni dei clienti", description: "Veicoli, animali, immobili o altri beni collegati ai clienti." },
     ai_assistant: { label: "Assistente AI", description: "Bozze automatiche e risposte suggerite." },
+    inventory: { label: "Magazzino", description: "Articoli, giacenze, lotti e scadenze." },
   };
 }
 

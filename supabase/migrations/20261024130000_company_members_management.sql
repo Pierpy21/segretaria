@@ -5,7 +5,7 @@
 --              inviti per email con token hashato (company_invitations), funzioni
 --              SECURITY DEFINER per anteprima e accettazione invito.
 --              Le policy di company_invitations usano has_permission(members:manage).
--- Depends on: 20261020160000_drop_dental_xray_columns.sql
+-- Depends on: 20261024120000_gommista.sql (rinominata da 20261022120000 nel merge con main)
 -- ============================================================================
 
 -- ============================================================================

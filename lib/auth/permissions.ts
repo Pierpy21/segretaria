@@ -12,6 +12,7 @@ export const PERMISSIONS = [
   "tasks:read", "tasks:write",
   "quotes:read", "quotes:write",
   "payments:read", "payments:write",
+  "inventory:read", "inventory:write",
   "reports:read",
   "records:manage",
   "settings:manage", "members:manage",
@@ -35,6 +36,7 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   "tasks:read", "tasks:write",
   "quotes:read", "quotes:write",
   "payments:read", "payments:write",
+  "inventory:read", "inventory:write",
   "reports:read",
 ];
 
@@ -49,6 +51,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, readonly Permission[]> = {
     "clients:read",
     "quotes:read", "quotes:write",
     "payments:read", "payments:write",
+    "inventory:read",
     "reports:read",
     "records:manage",
   ],
@@ -56,7 +59,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, readonly Permission[]> = {
 
 /** Moduli attivabili (company_modules). Riga assente = attivo. */
 export const MODULE_KEYS: readonly ModuleKey[] = [
-  "agenda", "chat", "quotes", "maintenance", "sensitive_data", "assets", "ai_assistant",
+  "agenda", "chat", "quotes", "maintenance", "sensitive_data", "assets", "ai_assistant", "inventory",
 ];
 
 export const DEFAULT_MODULES: CompanyModules = {
@@ -67,6 +70,7 @@ export const DEFAULT_MODULES: CompanyModules = {
   sensitive_data: true,
   assets: true,
   ai_assistant: true,
+  inventory: true,
 };
 
 /** Modulo da cui dipende un permesso, come permission_module() in SQL. Assente = sempre attivo. */
@@ -77,6 +81,7 @@ const PERMISSION_MODULE: Partial<Record<string, ModuleKey>> = {
   tasks: "maintenance",
   quotes: "quotes",
   sensitive: "sensitive_data",
+  inventory: "inventory",
 };
 
 export function permissionModule(permission: Permission): ModuleKey | null {
@@ -118,7 +123,7 @@ export function hasPermission(role: CompanyRole | null | undefined, permission: 
 }
 
 // ─── Gerarchia di gestione membri (members:manage) ──────────────────────────
-// Stessa regola applicata dal database (migration 20261022120000): owner ha pieni poteri,
+// Stessa regola applicata dal database (migration 20261024130000): owner ha pieni poteri,
 // admin gestisce solo member/accountant. Il prerequisito members:manage è il ruolo di sistema
 // (solo owner/admin: i ruoli personalizzati non possono averlo). Nessuno agisce su se stesso
 // (controllo nelle API).

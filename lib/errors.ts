@@ -24,6 +24,16 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** Servizio esterno non disponibile o con risposta non valida → HTTP 502 (o 503/429, vedi status). */
+export class ExternalServiceError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 502) {
+    super(message);
+    this.name = "ExternalServiceError";
+    this.status = status;
+  }
+}
+
 /** Risorsa non trovata nello studio corrente → HTTP 404. */
 export class NotFoundError extends Error {
   constructor(message = "Risorsa non trovata") {
@@ -32,7 +42,6 @@ export class NotFoundError extends Error {
   }
 }
 
-/** Codice Postgres (es. "42501", "23505") risalendo la catena cause di Drizzle. */
 /** Nome del vincolo violato (constraint_name del driver, o CONSTRAINT di RAISE), risalendo la catena cause. */
 export function pgConstraintName(err: unknown): string | undefined {
   let current: unknown = err;
@@ -57,11 +66,28 @@ export function pgErrorMessages(err: unknown): string[] {
   return messages;
 }
 
+/** Codice Postgres (es. "42501", "23505") risalendo la catena cause di Drizzle. */
 export function pgErrorCode(err: unknown): string | undefined {
   let current: unknown = err;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
     const code = (current as { code?: unknown }).code;
     if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/**
+ * Messaggio dell'errore Postgres (RAISE EXCEPTION), senza il SQL che Drizzle aggiunge
+ * al proprio messaggio: si prende dal nodo della catena cause che porta il codice SQLSTATE.
+ */
+export function pgMessage(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
+    const { code, message } = current as { code?: unknown; message?: unknown };
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) {
+      return typeof message === "string" && message ? message : undefined;
+    }
     current = (current as { cause?: unknown }).cause;
   }
   return undefined;

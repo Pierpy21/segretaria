@@ -30,6 +30,7 @@ const PERMISSION_GROUPS: { prefix: string; label: (t: Terms) => string }[] = [
   { prefix: "tasks", label: t => t.tasksLabel },
   { prefix: "quotes", label: t => t.quotePlural },
   { prefix: "payments", label: () => "Pagamenti" },
+  { prefix: "inventory", label: () => "Magazzino" },
   { prefix: "reports", label: () => "Report" },
   { prefix: "records", label: () => "Modifica record di altri" },
 ];

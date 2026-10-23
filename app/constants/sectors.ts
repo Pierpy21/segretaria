@@ -32,6 +32,12 @@ export const SECTORS: Record<Sector, { label: string; badge: string; subtitle: s
     subtitle: "Centro Estetico Smart AI",
     namePlaceholder: "Es. Centro Estetico Bellavista",
   },
+  gommista: {
+    label: "Gommista",
+    badge: "Tyre",
+    subtitle: "Gommista Smart AI",
+    namePlaceholder: "Es. Gommeria Rossi",
+  },
   generico: {
     label: "Generico",
     badge: "Pro",

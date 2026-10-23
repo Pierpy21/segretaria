@@ -205,6 +205,7 @@ export const calendarEvents = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique("calendar_events_id_company_id_key").on(table.id, table.companyId),
     index("idx_calendar_events_company").on(table.companyId),
     index("idx_calendar_events_asset").on(table.companyId, table.assetId),
     index("idx_calendar_events_start").on(table.companyId, table.startAt),
@@ -304,6 +305,7 @@ export const tasks = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique("tasks_id_company_id_key").on(table.id, table.companyId),
     index("idx_tasks_company").on(table.companyId),
     index("idx_tasks_column").on(table.companyId, table.columnId),
     index("idx_tasks_asset").on(table.companyId, table.assetId),
@@ -514,7 +516,7 @@ export const clientFieldDefinitions = pgTable(
     companyId: uuid("company_id")
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
-    /** 'client' → clientType = settore; 'asset' → clientType = asset_type */
+    /** 'client' → clientType = settore; 'asset' → asset_type; 'item' → chiave del tipo articolo */
     entity: text("entity").$type<FieldEntity>().notNull().default("client"),
     clientType: text("client_type").notNull(),
     key: text("key").notNull(),
@@ -530,7 +532,7 @@ export const clientFieldDefinitions = pgTable(
   (table) => [
     unique("client_field_definitions_key_unique").on(table.companyId, table.entity, table.clientType, table.key),
     index("idx_client_field_definitions_company").on(table.companyId, table.entity, table.clientType, table.position),
-    check("client_field_definitions_entity_check", sql`${table.entity} in ('client', 'asset')`),
+    check("client_field_definitions_entity_check", sql`${table.entity} in ('client', 'asset', 'item')`),
     check("client_field_definitions_type_check", sql`${table.type} in ('text', 'number', 'date', 'select', 'bool')`),
     check("client_field_definitions_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
     check("client_field_definitions_options_array", sql`jsonb_typeof(${table.options}) = 'array'`),
@@ -547,6 +549,11 @@ export interface VerticalTemplatePayload {
   fields: {
     entity: FieldEntity; client_type: string; key: string; label: string; type: ClientFieldType;
     options: string[]; required: boolean; position: number; sensitive: boolean;
+  }[];
+  /** Dalla v2 (20261023120000_inventory.sql) */
+  item_types?: {
+    key: string; label: string; track_lot: boolean; track_expiry: boolean; track_serial: boolean;
+    consumable: boolean; fractional: boolean; sellable: boolean; requires_client_on_issue: boolean; position: number;
   }[];
 }
 
@@ -630,6 +637,236 @@ export const companyAppointmentTypes = pgTable(
 );
 
 // ============================================================================
+// MAGAZZINO (20261023120000_inventory.sql)
+// La giacenza nasce dai movimenti: inventory_stock è scritta solo dal trigger,
+// inventory_movements è append-only (solo SELECT/INSERT).
+// ============================================================================
+export type InventoryMovementType = "carico" | "scarico" | "rettifica" | "reso";
+
+// --------------------------------------------------------------------------
+// inventory_item_types — tipi di articolo per studio; il comportamento sta nei flag
+// --------------------------------------------------------------------------
+export const inventoryItemTypes = pgTable(
+  "inventory_item_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    /** Etichetta del lotto in UI (es. "DOT"); NULL = "Lotto" */
+    lotLabel: text("lot_label"),
+    trackLot: boolean("track_lot").notNull().default(false),
+    trackExpiry: boolean("track_expiry").notNull().default(false),
+    trackSerial: boolean("track_serial").notNull().default(false),
+    /** false = bene durevole: non va a scorta minima */
+    consumable: boolean("consumable").notNull().default(true),
+    /** true = carico in unit, scarico in issue_unit */
+    fractional: boolean("fractional").notNull().default(false),
+    /** true = prezzo di vendita e IVA obbligatori */
+    sellable: boolean("sellable").notNull().default(false),
+    requiresClientOnIssue: boolean("requires_client_on_issue").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("inventory_item_types_key_unique").on(table.companyId, table.key),
+    unique("inventory_item_types_id_company_id_key").on(table.id, table.companyId),
+    index("idx_inventory_item_types_company").on(table.companyId, table.position),
+    check("inventory_item_types_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check("inventory_item_types_label_length", sql`char_length(${table.label}) BETWEEN 1 AND 80`),
+    check(
+      "inventory_item_types_lot_label_length",
+      sql`${table.lotLabel} IS NULL OR char_length(${table.lotLabel}) BETWEEN 1 AND 40`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// inventory_categories — solo organizzazione/filtri, parent facoltativo
+// --------------------------------------------------------------------------
+export const inventoryCategories = pgTable(
+  "inventory_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    parentId: uuid("parent_id"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("inventory_categories_id_company_id_key").on(table.id, table.companyId),
+    // ON DELETE SET NULL (parent_id) nella migration (drizzle non modella la colonna).
+    foreignKey({
+      name: "inventory_categories_parent_fkey",
+      columns: [table.parentId, table.companyId],
+      foreignColumns: [table.id, table.companyId],
+    }),
+    index("idx_inventory_categories_company").on(table.companyId, table.name),
+    index("idx_inventory_categories_parent").on(table.parentId).where(sql`${table.parentId} IS NOT NULL`),
+    check("inventory_categories_not_self_parent", sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
+    check("inventory_categories_name_length", sql`char_length(${table.name}) BETWEEN 1 AND 80`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// inventory_items — anagrafica articoli (nessuna quantità).
+// reorder_level/reorder_qty nell'unità di scarico; conversion_factor = unità di
+// scarico per 1 unità di carico (1 e issue_unit NULL se il tipo non è frazionabile).
+// --------------------------------------------------------------------------
+export const inventoryItems = pgTable(
+  "inventory_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    itemTypeId: uuid("item_type_id").notNull(),
+    categoryId: uuid("category_id"),
+    unit: text("unit").notNull().default("pz"),
+    issueUnit: text("issue_unit"),
+    conversionFactor: numeric("conversion_factor", { precision: 14, scale: 4 }).notNull().default("1"),
+    reorderLevel: numeric("reorder_level", { precision: 14, scale: 3 }),
+    reorderQty: numeric("reorder_qty", { precision: 14, scale: 3 }),
+    purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }),
+    salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
+    /** Validati con client_field_definitions (entity = 'item', client_type = chiave del tipo) */
+    attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
+    note: text("note"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("inventory_items_sku_unique").on(table.companyId, table.sku),
+    unique("inventory_items_id_company_id_key").on(table.id, table.companyId),
+    foreignKey({
+      name: "inventory_items_type_fkey",
+      columns: [table.itemTypeId, table.companyId],
+      foreignColumns: [inventoryItemTypes.id, inventoryItemTypes.companyId],
+    }),
+    // ON DELETE SET NULL (category_id) nella migration.
+    foreignKey({
+      name: "inventory_items_category_fkey",
+      columns: [table.categoryId, table.companyId],
+      foreignColumns: [inventoryCategories.id, inventoryCategories.companyId],
+    }),
+    index("idx_inventory_items_company").on(table.companyId, table.name),
+    index("idx_inventory_items_type").on(table.companyId, table.itemTypeId),
+    index("idx_inventory_items_category").on(table.companyId, table.categoryId),
+    index("idx_inventory_items_created_by").on(table.createdBy),
+    check("inventory_items_conversion_positive", sql`${table.conversionFactor} > 0`),
+    check("inventory_items_vat_range", sql`${table.vatRate} IS NULL OR ${table.vatRate} BETWEEN 0 AND 100`),
+    check("inventory_items_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// inventory_movements — registro append-only. quantity nell'unità di scarico:
+// carico/reso > 0, scarico < 0, rettifica ≠ 0. Validato dal trigger secondo i flag.
+// --------------------------------------------------------------------------
+export const inventoryMovements = pgTable(
+  "inventory_movements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id").notNull(),
+    movementType: text("movement_type").$type<InventoryMovementType>().notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    lot: text("lot"),
+    expiryDate: date("expiry_date"),
+    serial: text("serial"),
+    unitCost: numeric("unit_cost", { precision: 12, scale: 4 }),
+    clientId: uuid("client_id"),
+    appointmentId: uuid("appointment_id"),
+    taskId: uuid("task_id"),
+    reason: text("reason"),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "inventory_movements_item_fkey",
+      columns: [table.itemId, table.companyId],
+      foreignColumns: [inventoryItems.id, inventoryItems.companyId],
+    }),
+    // ON DELETE SET NULL (colonna) per cliente, appuntamento e task nella migration.
+    foreignKey({
+      name: "inventory_movements_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }),
+    foreignKey({
+      name: "inventory_movements_appointment_fkey",
+      columns: [table.appointmentId, table.companyId],
+      foreignColumns: [calendarEvents.id, calendarEvents.companyId],
+    }),
+    foreignKey({
+      name: "inventory_movements_task_fkey",
+      columns: [table.taskId, table.companyId],
+      foreignColumns: [tasks.id, tasks.companyId],
+    }),
+    index("idx_inventory_movements_item").on(table.companyId, table.itemId, table.createdAt.desc()),
+    index("idx_inventory_movements_serial").on(table.itemId, table.serial).where(sql`${table.serial} IS NOT NULL`),
+    index("idx_inventory_movements_client").on(table.clientId).where(sql`${table.clientId} IS NOT NULL`),
+    index("idx_inventory_movements_appointment").on(table.appointmentId).where(sql`${table.appointmentId} IS NOT NULL`),
+    index("idx_inventory_movements_task").on(table.taskId).where(sql`${table.taskId} IS NOT NULL`),
+    index("idx_inventory_movements_created_by").on(table.createdBy),
+    check("inventory_movements_type_check", sql`${table.movementType} IN ('carico', 'scarico', 'rettifica', 'reso')`),
+    check(
+      "inventory_movements_sign_check",
+      sql`(${table.movementType} IN ('carico', 'reso') AND ${table.quantity} > 0)
+        OR (${table.movementType} = 'scarico' AND ${table.quantity} < 0)
+        OR (${table.movementType} = 'rettifica' AND ${table.quantity} <> 0)`,
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// inventory_stock — giacenza per articolo + lotto + scadenza (solo lettura per gli utenti)
+// --------------------------------------------------------------------------
+export const inventoryStock = pgTable(
+  "inventory_stock",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id").notNull(),
+    lot: text("lot"),
+    expiryDate: date("expiry_date"),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull().default("0"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "inventory_stock_item_fkey",
+      columns: [table.itemId, table.companyId],
+      foreignColumns: [inventoryItems.id, inventoryItems.companyId],
+    }).onDelete("cascade"),
+    unique("inventory_stock_key_unique").on(table.companyId, table.itemId, table.lot, table.expiryDate).nullsNotDistinct(),
+    index("idx_inventory_stock_item").on(table.companyId, table.itemId),
+    index("idx_inventory_stock_expiry")
+      .on(table.companyId, table.expiryDate)
+      .where(sql`${table.expiryDate} IS NOT NULL AND ${table.quantity} > 0`),
+    check("inventory_stock_nonneg", sql`${table.quantity} >= 0`),
+  ]
+);
+
+// ============================================================================
 // TYPE EXPORTS — Use these instead of supabase.ts types
 // ============================================================================
 export type Company = typeof companies.$inferSelect;
@@ -676,3 +913,13 @@ export type CompanyModule = typeof companyModules.$inferSelect;
 export type CompanyRoleRow = typeof companyRoles.$inferSelect;
 export type CompanyAppointmentType = typeof companyAppointmentTypes.$inferSelect;
 export type VerticalTemplate = typeof verticalTemplates.$inferSelect;
+
+export type InventoryItemTypeRow = typeof inventoryItemTypes.$inferSelect;
+export type NewInventoryItemTypeRow = typeof inventoryItemTypes.$inferInsert;
+export type InventoryCategoryRow = typeof inventoryCategories.$inferSelect;
+export type NewInventoryCategoryRow = typeof inventoryCategories.$inferInsert;
+export type InventoryItemRow = typeof inventoryItems.$inferSelect;
+export type NewInventoryItemRow = typeof inventoryItems.$inferInsert;
+export type InventoryMovementRow = typeof inventoryMovements.$inferSelect;
+export type NewInventoryMovementRow = typeof inventoryMovements.$inferInsert;
+export type InventoryStockRow = typeof inventoryStock.$inferSelect;
