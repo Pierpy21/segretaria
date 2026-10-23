@@ -67,6 +67,11 @@ export function categoryPath(categoryId: string | null, categories: readonly Inv
   return names.length > 0 ? names.join(" › ") : "—";
 }
 
+/** Etichetta del lotto del tipo (es. "DOT" per i pneumatici); senza etichetta = "Lotto" */
+export function lotLabelOf(type: { lotLabel: string | null }): string {
+  return type.lotLabel?.trim() || "Lotto";
+}
+
 /** Unità in cui si esprime la giacenza: unità di scarico se presente, altrimenti di carico */
 export function unitOf(item: { unit: string; issueUnit: string | null }): string {
   return item.issueUnit ?? item.unit;

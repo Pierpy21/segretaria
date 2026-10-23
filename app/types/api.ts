@@ -281,6 +281,8 @@ export interface InventoryItemType extends Record<InventoryItemTypeFlag, boolean
   id: string;
   key: string;
   label: string;
+  /** Etichetta del lotto in UI (es. "DOT"); null = "Lotto" */
+  lotLabel: string | null;
   position: number;
   /** Tipi archiviati: restano sugli articoli esistenti, non si usano per nuovi articoli */
   archivedAt: string | null;
@@ -289,12 +291,56 @@ export interface CreateInventoryItemTypeInput extends Partial<Record<InventoryIt
   label: string;
   /** Chiave stabile; se assente viene generata dalla label */
   key?: string;
+  /** Etichetta del lotto (max 40); vuota o null = "Lotto" */
+  lotLabel?: string | null;
 }
 /** `fractional` non è modificabile se il tipo ha già articoli; `sellable` non si attiva se ci sono articoli senza prezzo/IVA. */
 export interface UpdateInventoryItemTypeInput extends Partial<Record<InventoryItemTypeFlag, boolean>> {
   label?: string;
+  /** null o vuota = torna "Lotto" */
+  lotLabel?: string | null;
   position?: number;
   archived?: boolean;
+}
+
+// ─── Catalogo pneumatici (EPREL, solo lettura) ──────────────────────────────
+// GET /api/inventory/catalog/tyres                       → TyreCatalogResponse (senza parametri: solo disponibilità)
+// GET /api/inventory/catalog/tyres?width&ratio&rim[&brand] → TyreCatalogResponse (inventory:write)
+//   width 100-400 (intero), ratio 20-100 (intero), rim 10-26 (intero o .5), brand max 60 caratteri.
+//   catalogAvailable false (chiave EPREL assente) → results sempre []; errori EPREL → ApiResult con error.
+export interface TyreCatalogQuery {
+  width: number;
+  ratio: number;
+  rim: number;
+  brand?: string;
+}
+/** Scheda di un pneumatico registrato in EPREL. Campi assenti nel catalogo = null. */
+export interface TyreCatalogEntry {
+  registrationNumber: string | null;
+  brand: string | null;
+  commercialName: string | null;
+  modelIdentifier: string | null;
+  sizeDesignation: string | null;
+  width: number | null;
+  ratio: number | null;
+  rim: number | null;
+  /** Indice di carico, es. "91" o "91/89" (doppio indice) */
+  loadIndex: string | null;
+  speedSymbol: string | null;
+  tyreClass: string | null;
+  /** Classe di consumo (energyClass) */
+  fuelClass: string | null;
+  wetGripClass: string | null;
+  noiseClass: string | null;
+  noiseDb: number | null;
+  /** Neve (3PMSF) */
+  snow: boolean | null;
+  ice: boolean | null;
+}
+export interface TyreCatalogResponse {
+  /** false = chiave EPREL non configurata sul server: nessuna chiamata esterna */
+  catalogAvailable: boolean;
+  results: TyreCatalogEntry[];
 }
 
 export interface InventoryCategory {

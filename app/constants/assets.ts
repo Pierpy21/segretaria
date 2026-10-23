@@ -4,6 +4,7 @@ export const ASSET_TYPE_LABELS: Record<string, { singolare: string; plurale: str
   animale: { singolare: "Animale", plurale: "Animali" },
   immobile: { singolare: "Immobile", plurale: "Immobili" },
   impianto: { singolare: "Impianto", plurale: "Impianti" },
+  deposito_gomme: { singolare: "Deposito gomme", plurale: "Depositi gomme" },
 };
 
 export function assetTypeLabel(assetType: string, plurale = false): string {

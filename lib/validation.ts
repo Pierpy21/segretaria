@@ -21,6 +21,7 @@ import type {
   InventoryItemTypeFlag,
   InventoryMovementType,
   OnboardingInput,
+  TyreCatalogQuery,
   UpdateAppointmentTypeInput,
   UpdateAssetInput,
   UpdateCustomRoleInput,
@@ -80,7 +81,7 @@ export const CLIENT_MESSAGE_FROM = ["user", "ai-draft"] as const satisfies reado
 export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined"] as const satisfies readonly QuoteStatus[];
 export const GENDERS = ["F", "M"] as const;
 export const SECTORS = [
-  "dentale", "medico", "commercialista", "legale", "estetico", "generico",
+  "dentale", "medico", "commercialista", "legale", "estetico", "gommista", "generico",
 ] as const satisfies readonly Sector[];
 const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
 
@@ -707,6 +708,17 @@ export function parseInventoryItemFilters(params: URLSearchParams): InventoryIte
   };
 }
 
+/** Etichetta del lotto: assente → undefined; null o vuota → null (torna "Lotto"); max 40 caratteri. */
+function optLotLabel(obj: JsonObject): string | null | undefined {
+  const v = obj.lotLabel;
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== "string") throw new ValidationError("Etichetta del lotto non valida");
+  const t = v.trim();
+  if (t.length > 40) throw new ValidationError("Etichetta del lotto: massimo 40 caratteri");
+  return t || null;
+}
+
 /** Flag di comportamento del tipo presenti nel body (le assenti restano invariate / default del DB). */
 function parseTypeFlags(body: JsonObject): Partial<Record<InventoryItemTypeFlag, boolean>> {
   const out: Partial<Record<InventoryItemTypeFlag, boolean>> = {};
@@ -721,6 +733,7 @@ export function parseInventoryItemTypeInput(body: JsonObject): CreateInventoryIt
   return {
     label: reqString(body, "label", "Nome del tipo", 80),
     key: optKey(body, "Chiave"),
+    lotLabel: optLotLabel(body),
     ...parseTypeFlags(body),
   };
 }
@@ -728,6 +741,7 @@ export function parseInventoryItemTypeInput(body: JsonObject): CreateInventoryIt
 export function parseInventoryItemTypePatch(body: JsonObject): UpdateInventoryItemTypeInput {
   const out: UpdateInventoryItemTypeInput = parseTypeFlags(body);
   if (body.label !== undefined) out.label = reqString(body, "label", "Nome del tipo", 80);
+  if (body.lotLabel !== undefined) out.lotLabel = optLotLabel(body) ?? null;
   if (body.position !== undefined) out.position = reqNumber(body, "position", "Posizione", { min: 0, max: 100_000, integer: true });
   if (body.archived !== undefined) out.archived = optBoolean(body, "archived", "Archiviato", false);
   if (Object.keys(out).length === 0) throw new ValidationError("Nessun campo da aggiornare");
@@ -826,6 +840,46 @@ export function parseInventoryMovementInput(body: JsonObject): CreateInventoryMo
     unitCost: optDecimal(body, "unitCost", "Costo unitario", UNIT_COST_OPTS),
     clientId: clientRaw === undefined ? undefined : parseClientCode(clientRaw),
     reason: optString(body, "reason", "Motivo", 500) || undefined,
+  };
+}
+
+// ─── Catalogo pneumatici (GET /api/inventory/catalog/tyres) ────────────────
+/** Intero in query string entro [min, max]. */
+function parseRangeIntParam(value: string, label: string, min: number, max: number): number {
+  if (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max) {
+    throw new ValidationError(`${label} non valida (${min}-${max})`);
+  }
+  return Number(value);
+}
+
+/** Cerchio in pollici: intero o .5 (es. 16, 19.5), 10-26. */
+function parseRimParam(value: string): number {
+  if (!/^\d{1,2}(\.5)?$/.test(value)) throw new ValidationError("Cerchio non valido (intero o .5, es. 16 o 19.5)");
+  const n = Number(value);
+  if (n < 10 || n > 26) throw new ValidationError("Cerchio non valido (10-26)");
+  return n;
+}
+
+/**
+ * Query del catalogo. Nessun parametro → null (si chiede solo la disponibilità del catalogo).
+ * Con parametri: width, ratio e rim obbligatori; brand facoltativo (max 60).
+ */
+export function parseTyreCatalogQuery(params: URLSearchParams): TyreCatalogQuery | null {
+  const text = (key: string): string | undefined => params.get(key)?.trim() || undefined;
+  const width = text("width");
+  const ratio = text("ratio");
+  const rim = text("rim");
+  const brand = text("brand");
+  if (width === undefined && ratio === undefined && rim === undefined && brand === undefined) return null;
+  if (width === undefined || ratio === undefined || rim === undefined) {
+    throw new ValidationError("Per la ricerca indicare larghezza, serie e cerchio");
+  }
+  if (brand !== undefined && brand.length > 60) throw new ValidationError("Marca: massimo 60 caratteri");
+  return {
+    width: parseRangeIntParam(width, "Larghezza", 100, 400),
+    ratio: parseRangeIntParam(ratio, "Serie", 20, 100),
+    rim: parseRimParam(rim),
+    brand,
   };
 }
 

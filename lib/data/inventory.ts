@@ -54,6 +54,7 @@ function toItemType(row: InventoryItemTypeRow): InventoryItemType {
     id: row.id,
     key: row.key,
     label: row.label,
+    lotLabel: row.lotLabel,
     position: row.position,
     trackLot: row.trackLot,
     trackExpiry: row.trackExpiry,
@@ -357,6 +358,7 @@ export async function createInventoryItemType(
       companyId,
       key,
       label: input.label,
+      lotLabel: input.lotLabel ?? null,
       trackLot: input.trackLot ?? false,
       trackExpiry: input.trackExpiry ?? false,
       trackSerial: input.trackSerial ?? false,
@@ -404,9 +406,10 @@ export async function updateInventoryItemType(
     }
   }
 
-  const { label, position, archived, ...flags } = patch;
+  const { label, lotLabel, position, archived, ...flags } = patch;
   const set: Partial<NewInventoryItemTypeRow> = { ...flags, updatedAt: new Date() };
   if (label !== undefined) set.label = label;
+  if (lotLabel !== undefined) set.lotLabel = lotLabel;
   if (position !== undefined) set.position = position;
   if (archived !== undefined) set.archivedAt = archived ? (current.archivedAt ?? new Date()) : null;
 
