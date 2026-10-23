@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import {
   calendarEvents,
   clientClinical,
@@ -190,13 +191,29 @@ function requireDate(value: string, label: string): string {
   return parsed;
 }
 
+const SEED_PERMISSIONS = [
+  "calendar:write", "reminders:write", "tasks:write", "chat:write", "quotes:write", "sensitive:write",
+] as const;
+type SeedPermission = (typeof SEED_PERMISSIONS)[number];
+
+/** Permessi di scrittura effettivi nello studio (ruolo + moduli attivi del preset), in una query. */
+async function writablePermissions(tx: Tx, companyId: string): Promise<Set<SeedPermission>> {
+  const rows = (await tx.execute(sql`
+    select p from unnest(array[${sql.join(SEED_PERMISSIONS.map((p) => sql`${p}`), sql`, `)}]::text[]) as p
+    where public.has_permission(${companyId}::uuid, p)
+  `)) as unknown as Array<{ p: SeedPermission }>;
+  return new Set(rows.map((r) => r.p));
+}
+
 /**
  * Popola uno studio appena creato con i dati demo (app/data/*).
  * Eseguito nella stessa transazione di create_company: all-or-nothing.
+ * Popola solo i moduli attivi del preset: con un modulo spento l'RLS rifiuterebbe l'insert.
  */
 export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector: Sector): Promise<void> {
   const now = new Date();
   const today = dateInZone(now, tz);
+  const can = await writablePermissions(tx, companyId);
 
   const eventRows: NewCalendarEvent[] = INITIAL_EVENTS.map((e) => {
     const startAt = instantOf(e.date, e.time, tz);
@@ -212,7 +229,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
       isAiGenerated: e.isAiGenerated,
     };
   });
-  await tx.insert(calendarEvents).values(eventRows);
+  if (can.has("calendar:write")) await tx.insert(calendarEvents).values(eventRows);
 
   const reminderRows: NewReminder[] = INITIAL_REMINDERS.map((r) => ({
     companyId,
@@ -221,7 +238,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
     priority: r.priority,
     status: r.status,
   }));
-  await tx.insert(reminders).values(reminderRows);
+  if (can.has("reminders:write")) await tx.insert(reminders).values(reminderRows);
 
   const taskRows: NewTask[] = INITIAL_COLUMNS.flatMap((col) =>
     col.tasks.map((t, position): NewTask => ({
@@ -235,7 +252,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
       customMetadata: t.assignedTo ? { assignedTo: t.assignedTo } : {},
     }))
   );
-  await tx.insert(tasks).values(taskRows);
+  if (can.has("tasks:write")) await tx.insert(tasks).values(taskRows);
 
   // Conversazioni e messaggi in 2 INSERT totali: gli id sono generati lato app,
   // così i messaggi possono referenziare le conversazioni senza RETURNING.
@@ -267,8 +284,10 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
       });
     }
   }
-  if (conversationRows.length > 0) await tx.insert(conversations).values(conversationRows);
-  if (messageRows.length > 0) await tx.insert(messages).values(messageRows);
+  if (can.has("chat:write") && conversationRows.length > 0) {
+    await tx.insert(conversations).values(conversationRows);
+    if (messageRows.length > 0) await tx.insert(messages).values(messageRows);
+  }
 
   const quoteRows: NewQuote[] = INITIAL_QUOTES.map((q) => ({
     companyId,
@@ -280,7 +299,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
     description: sectorCopy(sector, "quotes", q.id, "description", q.description),
     isAiGenerated: q.isAiGenerated,
   }));
-  await tx.insert(quotes).values(quoteRows);
+  if (can.has("quotes:write")) await tx.insert(quotes).values(quoteRows);
 
   const demo = DEMO_ATTRIBUTES[sector] ?? { public: {}, clinical: {} };
   const clientRows: NewClientRow[] = INITIAL_PATIENTS.map((p) => ({
@@ -303,6 +322,8 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
     .insert(clients)
     .values(clientRows)
     .returning({ id: clients.id, code: clients.code });
+  // Studio senza modulo dati sensibili: nessuna riga client_clinical (come in createClient).
+  if (!can.has("sensitive:write")) return;
   const idByCode = new Map(inserted.map((r) => [r.code, r.id]));
   await tx.insert(clientClinical).values(
     INITIAL_PATIENTS.map((p) => ({
