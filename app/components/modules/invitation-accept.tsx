@@ -9,6 +9,8 @@ import { useApiData } from "@/app/hooks/use-api-data";
 import { ErrorState, Skeleton } from "@/app/components/ui/async-state";
 import { formatDate } from "@/app/components/modules/settings-shared";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { refreshMe, useMe } from "@/app/hooks/use-me";
+import { normalizePersonName, PERSON_NAME_MAX } from "@/lib/person-name";
 import { roleTitle, DEFAULT_TERMS } from "@/lib/terms";
 import { API_ERROR } from "@/app/types/api";
 import type { AcceptInvitationResult, InvitationPreview } from "@/app/types/api";
@@ -55,6 +57,12 @@ export default function InvitationAccept({ token }: InvitationAcceptProps) {
   // Accettazione riuscita ma password non impostata: l'utente può comunque entrare nello studio
   const [acceptedHome, setAcceptedHome] = useState<string | null>(null);
   const inFlight = useRef(false);
+  // Nome e cognome: precompilati da /api/me; la bozza vince quando l'utente modifica il campo
+  const { data: me } = useMe();
+  const [firstNameDraft, setFirstNameDraft] = useState<string | null>(null);
+  const [lastNameDraft, setLastNameDraft] = useState<string | null>(null);
+  const firstName = firstNameDraft ?? me?.user.firstName ?? "";
+  const lastName = lastNameDraft ?? me?.user.lastName ?? "";
 
   // ── Stato di caricamento / errori dell'anteprima ──
   if (invite.loading) {
@@ -146,6 +154,12 @@ export default function InvitationAccept({ token }: InvitationAcceptProps) {
   async function accept(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (inFlight.current) return;
+    const first = normalizePersonName(firstName);
+    const last = normalizePersonName(lastName);
+    if (!first || !last) {
+      setError("Inserisci nome e cognome.");
+      return;
+    }
     if (password && password.length < MIN_PASSWORD_LENGTH) {
       setError(`La password deve avere almeno ${MIN_PASSWORD_LENGTH} caratteri.`);
       return;
@@ -159,17 +173,20 @@ export default function InvitationAccept({ token }: InvitationAcceptProps) {
         `/api/invitations/${encodeURIComponent(token)}/accept`,
         { method: "POST" }
       );
-      if (password) {
-        const { error: authError } = await createSupabaseBrowserClient().auth.updateUser({ password });
-        if (authError) {
-          setAcceptedHome(result.homePath);
-          setError(
-            "Sei entrato nello studio, ma non è stato possibile impostare la password. Potrai farlo con il recupero password."
-          );
-          router.refresh();
-          return;
-        }
+      // Poi nome, cognome e (se inserita) password in un'unica chiamata
+      const { error: authError } = await createSupabaseBrowserClient().auth.updateUser({
+        data: { first_name: first, last_name: last },
+        ...(password ? { password } : {}),
+      });
+      if (authError) {
+        setAcceptedHome(result.homePath);
+        setError(
+          "Sei entrato nello studio, ma non è stato possibile salvare il profilo. Potrai completarlo dal tuo profilo."
+        );
+        router.refresh();
+        return;
       }
+      refreshMe();
       router.replace(result.homePath);
       router.refresh();
     } catch (err) {
@@ -190,6 +207,37 @@ export default function InvitationAccept({ token }: InvitationAcceptProps) {
       </div>
 
       <form onSubmit={accept} className="space-y-3.5" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="invite-first-name" className="block text-xs font-bold text-ink mb-1">Nome</label>
+            <input
+              id="invite-first-name"
+              type="text"
+              autoComplete="given-name"
+              required
+              maxLength={PERSON_NAME_MAX}
+              disabled={submitting}
+              value={firstName}
+              onChange={e => setFirstNameDraft(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div>
+            <label htmlFor="invite-last-name" className="block text-xs font-bold text-ink mb-1">Cognome</label>
+            <input
+              id="invite-last-name"
+              type="text"
+              autoComplete="family-name"
+              required
+              maxLength={PERSON_NAME_MAX}
+              disabled={submitting}
+              value={lastName}
+              onChange={e => setLastNameDraft(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
+        </div>
+
         <div>
           <label htmlFor="invite-password" className="block text-xs font-bold text-ink mb-1">
             Imposta una password – necessaria se è il tuo primo accesso

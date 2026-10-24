@@ -19,6 +19,7 @@ import {
 } from "@/lib/auth/permissions";
 import { resolveTerms, roleTitle } from "@/lib/terms";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { normalizePersonName } from "@/lib/person-name";
 
 export { schema };
 export type { Tx };
@@ -72,9 +73,12 @@ const getVerifiedUser = cache(async (): Promise<AuthUser> => {
   if (error || !user || user.role !== "authenticated" || !user.id) {
     throw new UnauthorizedError();
   }
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   return {
     id: user.id,
     email: typeof user.email === "string" ? user.email : null,
+    firstName: normalizePersonName(meta.first_name),
+    lastName: normalizePersonName(meta.last_name),
   };
 });
 

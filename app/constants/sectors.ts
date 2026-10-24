@@ -38,6 +38,24 @@ export const SECTORS: Record<Sector, { label: string; badge: string; subtitle: s
     subtitle: "Gommista Smart AI",
     namePlaceholder: "Es. Gommeria Rossi",
   },
+  officina: {
+    label: "Officina meccanica",
+    badge: "Auto",
+    subtitle: "Officina Smart AI",
+    namePlaceholder: "Es. Officina Rossi",
+  },
+  parrucchiere: {
+    label: "Parrucchiere",
+    badge: "Hair",
+    subtitle: "Parrucchiere Smart AI",
+    namePlaceholder: "Es. Salone Bianca",
+  },
+  autolavaggio: {
+    label: "Autolavaggio",
+    badge: "Wash",
+    subtitle: "Autolavaggio Smart AI",
+    namePlaceholder: "Es. Autolavaggio Sole",
+  },
   generico: {
     label: "Generico",
     badge: "Pro",

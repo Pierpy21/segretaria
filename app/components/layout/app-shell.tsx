@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import Sidebar from "./sidebar";
 import Header from "./header";
 import { currentNavItem, navText, type NavArea } from "@/app/constants/navigation";
-import { useMe } from "@/app/hooks/use-me";
+import { useMe, roleLabel } from "@/app/hooks/use-me";
 import { useTerms } from "@/app/hooks/use-terms";
 
 interface AppShellProps {
@@ -37,12 +37,15 @@ export default function AppShell({ area, children }: AppShellProps) {
   const today = useSyncExternalStore(noopSubscribe, formatToday, () => null);
 
   const studioName = me?.company?.name ?? null;
+  const honorific = roleLabel(me);
+  const lastName = me?.user.lastName ?? null;
   const current = currentNavItem(area, pathname);
   const isDashboard = area === "studio" && pathname === "/";
   const { title, subtitle } = isDashboard
     ? {
-        title: studioName ?? "Dashboard",
-        subtitle: today && studioName ? `${today} — Benvenuto, ${studioName}` : (today ?? ""),
+        // Con il cognome noto il titolo è personale (es. "Titolare Rossi"), altrimenti nome dello studio
+        title: lastName && honorific ? `${honorific} ${lastName}` : (studioName ?? "Dashboard"),
+        subtitle: today ? `${today} — Benvenuto${studioName ? ` · ${studioName}` : ""}` : "",
       }
     : {
         title: current ? navText(current.title, terms) : "",

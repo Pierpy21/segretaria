@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SegretarIA Dental — Studio Odontoiatrico & Reception AI",
-  description: "Piattaforma intelligente per la gestione di prenotazioni, triage urgenze, piani di cura e recall dello studio dentistico.",
+  title: "SegretarIA — La segreteria intelligente per la tua attività",
+  description: "Segreteria intelligente per gestire appuntamenti, clienti, preventivi e comunicazioni della tua attività.",
 };
 
 

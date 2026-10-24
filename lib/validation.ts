@@ -84,6 +84,7 @@ export const QUOTE_STATUSES = ["pending_ai", "quote_sent", "approved", "declined
 export const GENDERS = ["F", "M"] as const;
 export const SECTORS = [
   "dentale", "medico", "commercialista", "legale", "estetico", "gommista", "generico",
+  "officina", "parrucchiere", "autolavaggio",
 ] as const satisfies readonly Sector[];
 const TREATMENT_STATUSES = ["Completato", "Pianificato", "In corso"] as const satisfies readonly TreatmentHistoryItem["status"][];
 

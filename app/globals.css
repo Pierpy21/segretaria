@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Palette CPINSAI: sfondo #F5EFE2, testo #4B2D20, accento #E04A95 */
+/* Palette SegretarIA: sfondo #F5EFE2, testo #4B2D20, accento #E04A95 */
 :root {
   --background: #f5efe2;
   --foreground: #4b2d20;
@@ -19,6 +19,10 @@
   --sidebar-hover: #ebe2d0;
   --sidebar-ink: #4b2d20;
   --sidebar-ink-muted: #7a6256;
+  --brand: #652700;
+  --brand-hover: #7a3a12;
+  --brand-ink: #fff8f0;
+  --brand-ink-muted: #e6cfc0;
 }
 
 @theme inline {
@@ -39,6 +43,10 @@
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-ink: var(--sidebar-ink);
   --color-sidebar-ink-muted: var(--sidebar-ink-muted);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-ink-muted: var(--brand-ink-muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

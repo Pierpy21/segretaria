@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle, LogIn, UserPlus } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { safeNextPath } from "@/lib/auth/safe-next";
+import { normalizePersonName, PERSON_NAME_MAX } from "@/lib/person-name";
+import { BrandMark } from "@/app/components/brand/brand-mark";
+import { BrandWordmark } from "@/app/components/brand/brand-wordmark";
 
 type Mode = "login" | "register";
 
@@ -42,6 +45,8 @@ function LoginForm() {
       ? "Il link non è valido o è scaduto. Richiedi un nuovo invito o accedi."
       : null;
   const [mode, setMode] = useState<Mode>("login");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -70,9 +75,17 @@ function LoginForm() {
       setError("Inserisci email e password.");
       return;
     }
-    if (mode === "register" && password.length < MIN_PASSWORD_LENGTH) {
-      setError(`La password deve avere almeno ${MIN_PASSWORD_LENGTH} caratteri.`);
-      return;
+    const first = normalizePersonName(firstName);
+    const last = normalizePersonName(lastName);
+    if (mode === "register") {
+      if (!first || !last) {
+        setError("Inserisci nome e cognome.");
+        return;
+      }
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        setError(`La password deve avere almeno ${MIN_PASSWORD_LENGTH} caratteri.`);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -89,10 +102,13 @@ function LoginForm() {
         return;
       }
 
+      // Registrazione: i nomi sono stati validati sopra (mode === "register")
+      if (!first || !last) return;
       const { data, error: authError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
+          data: { first_name: first, last_name: last },
           emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         },
       });
@@ -118,9 +134,14 @@ function LoginForm() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm bg-surface rounded-2xl border border-line p-6 shadow-sm">
-        <div className="mb-5">
-          <h1 className="text-base font-bold text-ink">SegretarIA Dental</h1>
-          <p className="text-xs text-ink-muted">Accedi alla gestione del tuo studio odontoiatrico</p>
+        <div className="mb-5 flex items-center gap-3">
+          <BrandMark size={40} />
+          <div className="min-w-0">
+            <h1 className="leading-tight">
+              <BrandWordmark />
+            </h1>
+            <p className="text-xs text-ink-muted">Accedi alla gestione della tua attività</p>
+          </div>
         </div>
 
         <div role="tablist" className="grid grid-cols-2 gap-1 bg-surface-muted border border-line rounded-xl p-1 mb-5">
@@ -140,6 +161,43 @@ function LoginForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+          {mode === "register" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="first-name" className="block text-xs font-bold text-ink mb-1">
+                  Nome
+                </label>
+                <input
+                  id="first-name"
+                  type="text"
+                  autoComplete="given-name"
+                  required
+                  maxLength={PERSON_NAME_MAX}
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  placeholder="Mario"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="last-name" className="block text-xs font-bold text-ink mb-1">
+                  Cognome
+                </label>
+                <input
+                  id="last-name"
+                  type="text"
+                  autoComplete="family-name"
+                  required
+                  maxLength={PERSON_NAME_MAX}
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  placeholder="Rossi"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label htmlFor="email" className="block text-xs font-bold text-ink mb-1">
               Email

@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Bell, Menu, LogOut } from "lucide-react";
 import { useMe, initialsOf } from "@/app/hooks/use-me";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { can } from "@/lib/auth/permissions";
 import { useTerms } from "@/app/hooks/use-terms";
+import { fullNameOf } from "@/lib/person-name";
+import { ProfileDialog } from "@/app/components/layout/profile-dialog";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -15,8 +18,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const { data: me } = useMe();
   const terms = useTerms();
+  const [profile, setProfile] = useState<{ opener: HTMLElement | null } | null>(null);
 
   const email = me?.user.email ?? null;
+  const displayName = (me ? fullNameOf(me.user) : null) ?? email ?? "";
   const studioName = me?.company?.name ?? (me ? "Nessuno studio" : "…");
   const canCreateAppointment = can(me?.permissions, "calendar:write");
   const canCreateQuote = can(me?.permissions, "quotes:write");
@@ -84,14 +89,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
         {/* Utente & studio */}
         <div className="hidden md:flex flex-col items-end leading-tight min-w-0 max-w-[180px]">
           <span className="text-xs font-semibold text-ink truncate max-w-full" title={studioName}>{studioName}</span>
-          <span className="text-[10px] text-ink-muted truncate max-w-full" title={email ?? undefined}>{email ?? ""}</span>
+          <span className="text-[10px] text-ink-muted truncate max-w-full" title={email ?? undefined}>{displayName}</span>
         </div>
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-accent-ink bg-accent flex-shrink-0"
-          title={email ?? undefined}
-        >
-          {initialsOf(email)}
-        </div>
+        {me && (
+          <button
+            type="button"
+            onClick={e => setProfile({ opener: e.currentTarget })}
+            aria-label="Il tuo profilo"
+            title={email ?? undefined}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-accent-ink bg-accent-hover flex-shrink-0 hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            {initialsOf(displayName || null)}
+          </button>
+        )}
 
         <button
           onClick={signOut}
@@ -100,6 +110,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <LogOut size={13} /> <span className="hidden sm:inline">Esci</span>
         </button>
       </div>
+
+      {profile && me && (
+        <ProfileDialog me={me} opener={profile.opener} onClose={() => setProfile(null)} />
+      )}
     </header>
   );
 }
