@@ -28,7 +28,7 @@ export const API_ERROR = {
 // owner/admin = titolare (accesso completo); member = staff; accountant = assistente contabile.
 export type CompanyRole = "owner" | "admin" | "member" | "accountant";
 export interface MeResponse {
-  user: { id: string; email: string | null };
+  user: { id: string; email: string | null; firstName: string | null; lastName: string | null };
   company: {
     id: string; name: string; slug: string; sector: Sector; role: CompanyRole;
     /** Versione del preset di settore applicata (null se mai applicato) */
