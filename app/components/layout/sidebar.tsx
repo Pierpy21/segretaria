@@ -11,7 +11,6 @@ import { useSidebarBadges } from "@/app/hooks/use-sidebar-badges";
 import { currentNavItem, visibleNavItems, navText, type NavArea } from "@/app/constants/navigation";
 import { useTerms } from "@/app/hooks/use-terms";
 import { fullNameOf } from "@/lib/person-name";
-import { BrandMark } from "@/app/components/brand/brand-mark";
 import { BrandWordmark } from "@/app/components/brand/brand-wordmark";
 
 interface SidebarProps {
@@ -69,7 +68,6 @@ export default function Sidebar({ area, isOpen = false, onClose }: SidebarProps)
       <div className="px-5 py-5 border-b border-brand-hover flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <BrandMark size={32} />
             <div className="flex items-center gap-1.5 min-w-0">
               <BrandWordmark tone="light" />
               {sector && <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-brand-hover text-brand-ink">{sector.badge}</span>}
