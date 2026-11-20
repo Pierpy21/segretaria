@@ -29,7 +29,7 @@ export type Sector =
   | "officina" | "parrucchiere" | "autolavaggio";
 export type ClientFieldType = "text" | "number" | "date" | "select" | "bool";
 /** Entità a cui appartiene una definizione: il cliente o un suo bene (client_assets). */
-export type FieldEntity = "client" | "asset" | "item";
+export type FieldEntity = "client" | "asset" | "item" | "work_order";
 export type ClientAttributeValue = string | number | boolean | null;
 export type ClientAttributes = Record<string, ClientAttributeValue>;
 
@@ -48,11 +48,14 @@ export interface ClientFieldDefinition {
 export interface Client {
   id: string; // e.g. "PT-2026-0142"
   name: string;
-  gender: "F" | "M";
+  /** Facoltativo (null = non indicato, es. persone giuridiche) */
+  gender: "F" | "M" | null;
   avatar: string;
   initials: string;
-  dateOfBirth: string;
-  age: number;
+  /** Facoltativa: formato lungo ("14 giugno 1995"), null se non registrata */
+  dateOfBirth: string | null;
+  /** Età in anni compiuti, null se la data di nascita manca */
+  age: number | null;
   phone: string;
   email: string;
   address: string;

@@ -1,14 +1,15 @@
 import "server-only";
 import { cache } from "react";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { withRLS, type Tx, type VerifiedClaims } from "@/lib/system/rls";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { companies, companyMembers, companyModules, companyRoles } from "@/drizzle/schema";
+import { clientAccounts, companies, companyMembers, companyModules, companyRoles } from "@/drizzle/schema";
 import * as schema from "@/drizzle/schema";
-import type { CompanyRole, MeResponse } from "@/app/types/api";
+import type { CompanyRole, CustomerLink, MeResponse } from "@/app/types/api";
 import type { CompanyModules, ModuleKey, Terms } from "@/app/types/settings";
 import type { Sector } from "@/app/types/clients";
 import {
+  CUSTOMER_HOME_PATH,
   DEFAULT_MODULES,
   can,
   effectivePermissions,
@@ -169,6 +170,19 @@ async function selectMembership(tx: Tx, userId: string): Promise<MembershipData 
 }
 
 /**
+ * Collegamenti attivi dell'utente come cliente finale (client_accounts, revoked_at null).
+ * Letti nella tx con i claims dell'utente: la policy consente la lettura delle proprie righe.
+ */
+async function selectCustomerLinks(tx: Tx, userId: string): Promise<CustomerLink[]> {
+  const rows = await tx
+    .select({ companyId: clientAccounts.companyId, clientId: clientAccounts.clientId })
+    .from(clientAccounts)
+    .where(and(eq(clientAccounts.userId, userId), isNull(clientAccounts.revokedAt)))
+    .orderBy(asc(clientAccounts.createdAt));
+  return rows;
+}
+
+/**
  * UNICO punto di accesso ai dati dello studio dalle route: UNA sola transazione RLS
  * che risolve la membership (query) e poi esegue cb con tx e contesto dello studio.
  * Lancia UnauthorizedError (401) o NoCompanyError (409).
@@ -193,10 +207,20 @@ export async function withCompany<T>(
 /** Sessione + studio corrente per /api/me. Non lancia se manca lo studio. */
 export const getMe = cache(async (): Promise<MeResponse> => {
   const user = await getVerifiedUser();
-  const m = await withUser((tx) => selectMembership(tx, user.id));
+  // Membership e (solo senza membership) collegamenti cliente nella stessa tx.
+  const { m, customerLinks } = await withUser(async (tx) => {
+    const membership = await selectMembership(tx, user.id);
+    return {
+      m: membership,
+      customerLinks: membership ? [] : await selectCustomerLinks(tx, user.id),
+    };
+  });
   if (!m) {
+    const kind = customerLinks.length > 0 ? "customer" : "none";
     return {
       user,
+      kind,
+      customerLinks,
       company: null,
       role: null,
       profile: null,
@@ -210,6 +234,8 @@ export const getMe = cache(async (): Promise<MeResponse> => {
   const terms = m.terms;
   return {
     user,
+    kind: "staff",
+    customerLinks: [],
     company: {
       id: m.companyId,
       name: m.name,
@@ -313,4 +339,13 @@ export const getCurrentMembership = cache(async (): Promise<Membership | null> =
     customRole: me.customRole,
     roleTitle: me.roleTitle ?? me.terms.ownerTitle,
   };
+});
+
+/**
+ * Dove mandare chi non ha una membership: il cliente finale va al portale (kind 'customer'),
+ * chi non ha nulla va all'onboarding. Da usare nei layout dopo getCurrentMembership() === null.
+ */
+export const getNoMembershipPath = cache(async (): Promise<string> => {
+  const me = await getMe();
+  return me.kind === "customer" ? CUSTOMER_HOME_PATH : "/onboarding";
 });

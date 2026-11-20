@@ -27,8 +27,22 @@ export const API_ERROR = {
 // conferma email su GET /auth/callback?code=... → redirect "/".
 // owner/admin = titolare (accesso completo); member = staff; accountant = assistente contabile.
 export type CompanyRole = "owner" | "admin" | "member" | "accountant";
+/**
+ * Tipo di account: staff = membership di uno studio; customer = nessuna membership ma almeno
+ * un client_accounts attivo (cliente finale); none = nessuno dei due (→ onboarding).
+ */
+export type AccountKind = "staff" | "customer" | "none";
+/** Collegamento attivo utente → scheda cliente di uno studio (client_accounts). clientId = id interno (uuid). */
+export interface CustomerLink {
+  companyId: string;
+  clientId: string;
+}
 export interface MeResponse {
   user: { id: string; email: string | null; firstName: string | null; lastName: string | null };
+  /** Tipo di account (vedi AccountKind) */
+  kind: AccountKind;
+  /** Collegamenti cliente attivi; valorizzato solo se kind !== 'staff' ([] altrimenti) */
+  customerLinks: CustomerLink[];
   company: {
     id: string; name: string; slug: string; sector: Sector; role: CompanyRole;
     /** Versione del preset di settore applicata (null se mai applicato) */

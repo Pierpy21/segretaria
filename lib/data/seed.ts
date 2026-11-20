@@ -488,7 +488,7 @@ export async function seedDemoData(tx: Tx, companyId: string, tz: string, sector
     name: p.name,
     gender: p.gender,
     avatar: p.avatar,
-    dateOfBirth: requireDate(p.dateOfBirth, "cliente"),
+    dateOfBirth: p.dateOfBirth ? requireDate(p.dateOfBirth, "cliente") : null,
     phone: p.phone,
     email: p.email,
     address: p.address,

@@ -13,6 +13,9 @@ export const PERMISSIONS = [
   "quotes:read", "quotes:write",
   "payments:read", "payments:write",
   "inventory:read", "inventory:write",
+  "work_orders:read", "work_orders:write",
+  "requests:read", "requests:write",
+  "recalls:manage",
   "reports:read",
   "records:manage",
   "settings:manage", "members:manage",
@@ -28,7 +31,8 @@ export const CUSTOM_ROLE_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter
 /** titolare = owner/admin, contabile = accountant, staff = member */
 export type AccessProfile = "titolare" | "contabile" | "staff";
 
-const MEMBER_PERMISSIONS: readonly Permission[] = [
+/** Permessi del ruolo di sistema member. DEVE restare identica a system_role_permissions('member') nella migration. */
+export const MEMBER_PERMISSIONS: readonly Permission[] = [
   "clients:read", "clients:write", "sensitive:read", "sensitive:write",
   "chat:read", "chat:write",
   "calendar:read", "calendar:write",
@@ -37,6 +41,9 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   "quotes:read", "quotes:write",
   "payments:read", "payments:write",
   "inventory:read", "inventory:write",
+  "work_orders:read", "work_orders:write",
+  "requests:read", "requests:write",
+  "recalls:manage",
   "reports:read",
 ];
 
@@ -60,8 +67,10 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, readonly Permission[]> = {
 /** Moduli attivabili (company_modules). Riga assente = attivo. */
 export const MODULE_KEYS: readonly ModuleKey[] = [
   "agenda", "chat", "quotes", "maintenance", "sensitive_data", "assets", "ai_assistant", "inventory",
+  "work_orders", "requests", "customer_portal", "recalls",
 ];
 
+/** Moduli nuovi (work_orders, requests, customer_portal, recalls) spenti per default: li accendono i preset. */
 export const DEFAULT_MODULES: CompanyModules = {
   agenda: true,
   chat: true,
@@ -71,10 +80,14 @@ export const DEFAULT_MODULES: CompanyModules = {
   assets: true,
   ai_assistant: true,
   inventory: true,
+  work_orders: false,
+  requests: false,
+  customer_portal: false,
+  recalls: false,
 };
 
 /** Modulo da cui dipende un permesso, come permission_module() in SQL. Assente = sempre attivo. */
-const PERMISSION_MODULE: Partial<Record<string, ModuleKey>> = {
+export const PERMISSION_MODULE: Partial<Record<string, ModuleKey>> = {
   calendar: "agenda",
   reminders: "agenda",
   chat: "chat",
@@ -82,6 +95,9 @@ const PERMISSION_MODULE: Partial<Record<string, ModuleKey>> = {
   quotes: "quotes",
   sensitive: "sensitive_data",
   inventory: "inventory",
+  work_orders: "work_orders",
+  requests: "requests",
+  recalls: "recalls",
 };
 
 export function permissionModule(permission: Permission): ModuleKey | null {
@@ -161,3 +177,6 @@ export function profileOf(role: CompanyRole): AccessProfile {
 export function homePathFor(role: CompanyRole): string {
   return role === "accountant" ? "/contabile" : "/";
 }
+
+/** Percorso iniziale di un cliente finale (account cliente senza membership). Il portale è uno step successivo. */
+export const CUSTOMER_HOME_PATH = "/portale";

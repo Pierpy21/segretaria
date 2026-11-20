@@ -7,6 +7,7 @@ import { apiFetch } from "@/app/lib/api-client";
 import type { MeResponse, OnboardingInput, Sector } from "@/app/types/api";
 import { Skeleton } from "@/app/components/ui/async-state";
 import { SECTOR_OPTIONS, SECTORS } from "@/app/constants/sectors";
+import { CUSTOMER_HOME_PATH } from "@/lib/auth/permissions";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Se lo studio esiste già, non serve l'onboarding
+  // Se lo studio esiste già, non serve l'onboarding; un cliente finale non crea uno studio
   useEffect(() => {
     let cancelled = false;
     apiFetch<MeResponse>("/api/me")
@@ -25,6 +26,10 @@ export default function OnboardingPage() {
         if (cancelled) return;
         if (me.company) {
           router.replace("/");
+          return;
+        }
+        if (me.kind === "customer") {
+          router.replace(CUSTOMER_HOME_PATH);
           return;
         }
         setChecking(false);

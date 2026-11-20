@@ -12,6 +12,14 @@ import {
   clients,
   clientClinical,
   clientFieldDefinitions,
+  serviceCatalog,
+  serviceRequests,
+  workOrders,
+  workOrderEvents,
+  clientAccounts,
+  customerNotifications,
+  clientDocuments,
+  recallLog,
 } from "./schema";
 
 // ============================================================================
@@ -34,6 +42,13 @@ export const companiesRelations = relations(companies, ({ many }) => ({
   quotes: many(quotes),
   clients: many(clients),
   clientFieldDefinitions: many(clientFieldDefinitions),
+  serviceCatalog: many(serviceCatalog),
+  serviceRequests: many(serviceRequests),
+  workOrders: many(workOrders),
+  clientAccounts: many(clientAccounts),
+  customerNotifications: many(customerNotifications),
+  clientDocuments: many(clientDocuments),
+  recallLog: many(recallLog),
 }));
 
 // --------------------------------------------------------------------------
@@ -135,14 +150,109 @@ export const quotesRelations = relations(quotes, ({ one }) => ({
 }));
 
 // --------------------------------------------------------------------------
-// clients belongs to company
+// clients belongs to company, has the new client-facing records
 // --------------------------------------------------------------------------
-export const clientsRelations = relations(clients, ({ one }) => ({
+export const clientsRelations = relations(clients, ({ one, many }) => ({
   company: one(companies, {
     fields: [clients.companyId],
     references: [companies.id],
   }),
   clinical: one(clientClinical),
+  serviceRequests: many(serviceRequests),
+  workOrders: many(workOrders),
+  accounts: many(clientAccounts),
+  notifications: many(customerNotifications),
+  documents: many(clientDocuments),
+  recalls: many(recallLog),
+}));
+
+// --------------------------------------------------------------------------
+// Moduli lavori / richieste / portale / richiami: ciascuna tabella appartiene a company
+// e (dove c'è client_id) a client. Le FK composite sono in drizzle/schema.ts.
+// --------------------------------------------------------------------------
+export const serviceCatalogRelations = relations(serviceCatalog, ({ one }) => ({
+  company: one(companies, {
+    fields: [serviceCatalog.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const serviceRequestsRelations = relations(serviceRequests, ({ one }) => ({
+  company: one(companies, {
+    fields: [serviceRequests.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [serviceRequests.clientId, serviceRequests.companyId],
+    references: [clients.id, clients.companyId],
+  }),
+}));
+
+export const workOrdersRelations = relations(workOrders, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [workOrders.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [workOrders.clientId, workOrders.companyId],
+    references: [clients.id, clients.companyId],
+  }),
+  events: many(workOrderEvents),
+}));
+
+export const workOrderEventsRelations = relations(workOrderEvents, ({ one }) => ({
+  company: one(companies, {
+    fields: [workOrderEvents.companyId],
+    references: [companies.id],
+  }),
+  workOrder: one(workOrders, {
+    fields: [workOrderEvents.workOrderId, workOrderEvents.companyId],
+    references: [workOrders.id, workOrders.companyId],
+  }),
+}));
+
+export const clientAccountsRelations = relations(clientAccounts, ({ one }) => ({
+  company: one(companies, {
+    fields: [clientAccounts.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [clientAccounts.clientId, clientAccounts.companyId],
+    references: [clients.id, clients.companyId],
+  }),
+}));
+
+export const customerNotificationsRelations = relations(customerNotifications, ({ one }) => ({
+  company: one(companies, {
+    fields: [customerNotifications.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [customerNotifications.clientId, customerNotifications.companyId],
+    references: [clients.id, clients.companyId],
+  }),
+}));
+
+export const clientDocumentsRelations = relations(clientDocuments, ({ one }) => ({
+  company: one(companies, {
+    fields: [clientDocuments.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [clientDocuments.clientId, clientDocuments.companyId],
+    references: [clients.id, clients.companyId],
+  }),
+}));
+
+export const recallLogRelations = relations(recallLog, ({ one }) => ({
+  company: one(companies, {
+    fields: [recallLog.companyId],
+    references: [companies.id],
+  }),
+  client: one(clients, {
+    fields: [recallLog.clientId, recallLog.companyId],
+    references: [clients.id, clients.companyId],
+  }),
 }));
 
 // --------------------------------------------------------------------------
