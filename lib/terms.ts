@@ -27,6 +27,11 @@ export const DEFAULT_TERMS: Terms = {
   itemSingular: "Articolo",
   itemPlural: "Articoli",
   inventorySubtitle: "Articoli, giacenze e movimenti di magazzino",
+  workOrdersLabel: "Lavori",
+  workOrderStatusWaiting: "Richiesta presa in carico",
+  workOrderStatusInProgress: "Lavoro in corso",
+  workOrderStatusReady: "Pronto per il ritiro",
+  workOrderStatusDelivered: "Consegnato, grazie!",
 };
 
 export const TERM_KEYS = Object.keys(DEFAULT_TERMS) as TermKey[];

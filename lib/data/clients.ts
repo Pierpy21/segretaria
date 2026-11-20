@@ -60,8 +60,8 @@ function toClient(
     gender: row.gender,
     avatar: row.avatar,
     initials: initialsOf(row.name),
-    dateOfBirth: formatItalianLong(row.dateOfBirth),
-    age: ageFrom(row.dateOfBirth, now, tz),
+    dateOfBirth: row.dateOfBirth ? formatItalianLong(row.dateOfBirth) : null,
+    age: row.dateOfBirth ? ageFrom(row.dateOfBirth, now, tz) : null,
     phone: row.phone,
     email: row.email,
     address: row.address,
@@ -151,7 +151,9 @@ function hasSensitiveData(input: CreateClientInput, sens: ClientAttributes): boo
     || input.treatments.length > 0;
 }
 
-function parseBirthDate(input: string): string {
+/** Data di nascita facoltativa: null o vuota → null (nessuna data registrata). */
+function parseBirthDate(input: string | null): string | null {
+  if (input === null || !input.trim()) return null;
   const parsed = parseDateInput(input);
   if (!parsed) throw new ValidationError("Data di nascita non valida (es. 14 giugno 1995 o 1995-06-14)");
   return parsed;

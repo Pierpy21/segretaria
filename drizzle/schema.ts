@@ -199,6 +199,8 @@ export const calendarEvents = pgTable(
     assetId: uuid("asset_id"),
     /** Tipo di appuntamento dello studio (FK composita + ON DELETE SET NULL nella migration) */
     appointmentTypeId: uuid("appointment_type_id"),
+    /** Cliente collegato (FK composita nullable nella migration: clients è definita dopo) */
+    clientId: uuid("client_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -208,6 +210,9 @@ export const calendarEvents = pgTable(
     unique("calendar_events_id_company_id_key").on(table.id, table.companyId),
     index("idx_calendar_events_company").on(table.companyId),
     index("idx_calendar_events_asset").on(table.companyId, table.assetId),
+    index("idx_calendar_events_client")
+      .on(table.companyId, table.clientId)
+      .where(sql`${table.clientId} IS NOT NULL`),
     index("idx_calendar_events_start").on(table.companyId, table.startAt),
     index("calendar_events_created_by_idx").on(table.createdBy),
     uniqueIndex("calendar_events_external_uniq")
@@ -389,15 +394,26 @@ export const quotes = pgTable(
     isAiGenerated: boolean("is_ai_generated").notNull().default(false),
     /** Bene del cliente collegato (nullable) */
     assetId: uuid("asset_id"),
+    /** Cliente collegato (FK composita nullable nella migration; NULL per i preventivi solo testuali) */
+    clientId: uuid("client_id"),
+    /** Richiesta da cui nasce il preventivo (FK composita nullable nella migration: service_requests è definita dopo) */
+    requestId: uuid("request_id"),
     createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
     customMetadata: jsonb("custom_metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique("quotes_id_company_id_key").on(table.id, table.companyId),
     index("idx_quotes_company").on(table.companyId),
     index("idx_quotes_status").on(table.companyId, table.status),
     index("idx_quotes_asset").on(table.companyId, table.assetId),
+    index("idx_quotes_client")
+      .on(table.companyId, table.clientId)
+      .where(sql`${table.clientId} IS NOT NULL`),
+    index("idx_quotes_request")
+      .on(table.companyId, table.requestId)
+      .where(sql`${table.requestId} IS NOT NULL`),
     index("quotes_created_by_idx").on(table.createdBy),
   ]
 );
@@ -414,9 +430,11 @@ export const clients = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
     name: text("name").notNull(),
-    gender: text("gender", { enum: ["F", "M"] }).notNull(),
+    /** Facoltativo (NULL = non indicato, es. persone giuridiche o clienti registrati dall'app) */
+    gender: text("gender", { enum: ["F", "M"] }),
     avatar: text("avatar").notNull().default(""),
-    dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
+    /** Facoltativa (NULL = non registrata) */
+    dateOfBirth: date("date_of_birth", { mode: "string" }),
     phone: text("phone").notNull().default(""),
     email: text("email").notNull().default(""),
     address: text("address").notNull().default(""),
@@ -434,7 +452,7 @@ export const clients = pgTable(
     unique("clients_company_id_code_key").on(table.companyId, table.code),
     unique("clients_id_company_id_key").on(table.id, table.companyId),
     index("idx_clients_created_by").on(table.createdBy),
-    check("clients_gender_check", sql`${table.gender} in ('F', 'M')`),
+    check("clients_gender_check", sql`${table.gender} is null or ${table.gender} in ('F', 'M')`),
     check("clients_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
   ]
 );
@@ -470,6 +488,10 @@ export const clientAssets = pgTable(
       foreignColumns: [clients.id, clients.companyId],
     }).onDelete("cascade"),
     index("idx_client_assets_client").on(table.companyId, table.clientId),
+    // Un bene identificato (es. targa) è unico nello studio per tipo (solo attivi)
+    uniqueIndex("client_assets_identifier_uniq")
+      .on(table.companyId, table.assetType, table.identifier)
+      .where(sql`${table.identifier} IS NOT NULL AND ${table.archivedAt} IS NULL`),
     index("idx_client_assets_identifier").on(table.companyId, table.identifier),
     index("idx_client_assets_created_by").on(table.createdBy),
     check("client_assets_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
@@ -532,7 +554,7 @@ export const clientFieldDefinitions = pgTable(
   (table) => [
     unique("client_field_definitions_key_unique").on(table.companyId, table.entity, table.clientType, table.key),
     index("idx_client_field_definitions_company").on(table.companyId, table.entity, table.clientType, table.position),
-    check("client_field_definitions_entity_check", sql`${table.entity} in ('client', 'asset', 'item')`),
+    check("client_field_definitions_entity_check", sql`${table.entity} in ('client', 'asset', 'item', 'work_order')`),
     check("client_field_definitions_type_check", sql`${table.type} in ('text', 'number', 'date', 'select', 'bool')`),
     check("client_field_definitions_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
     check("client_field_definitions_options_array", sql`jsonb_typeof(${table.options}) = 'array'`),
@@ -584,7 +606,14 @@ export const companyModules = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.companyId, table.module] })]
+  (table) => [
+    primaryKey({ columns: [table.companyId, table.module] }),
+    check(
+      "company_modules_module_check",
+      sql`${table.module} IN ('agenda', 'chat', 'quotes', 'maintenance', 'sensitive_data', 'assets', 'ai_assistant',
+               'inventory', 'work_orders', 'requests', 'customer_portal', 'recalls')`
+    ),
+  ]
 );
 
 // --------------------------------------------------------------------------
@@ -867,6 +896,488 @@ export const inventoryStock = pgTable(
 );
 
 // ============================================================================
+// MODULI LAVORI / RICHIESTE / PORTALE / RICHIAMI (20261112120000_moduli_lavori_portale.sql)
+// Ordine delle tabelle = ordine di dipendenza: le FK verso tabelle definite più in basso
+// sono nella migration (commento sul campo), perché drizzle non può referenziarle prima.
+// Le FK "ON DELETE SET NULL (colonna)" (PG15) non sono esprimibili qui: il comportamento è nella migration.
+// ============================================================================
+export type WorkOrderStatus = "waiting" | "in_progress" | "ready" | "delivered";
+export type ServiceRequestKind = "quote" | "appointment" | "info";
+export type ServiceRequestStatus = "new" | "auto_quoted" | "quoted" | "confirmed" | "declined" | "closed";
+export type ServiceRequestSource = "portal" | "desk";
+export type CustomerNotificationKind = "status" | "reminder" | "recall" | "quote" | "request" | "info";
+export type RecallChannel = "whatsapp" | "in_app" | "email" | "sms";
+
+/** Snapshot della voce richiesta (servizio di listino o articolo di magazzino). */
+export interface ServiceRequestItem {
+  source: "service" | "inventory";
+  id: string;
+  title: string;
+  /** null = "su richiesta" */
+  price: number | null;
+  qty: number;
+}
+
+/** Preventivo automatico calcolato dal database (customer_create_request), mai ricevuto dal client. */
+export interface AutoQuote {
+  available: boolean;
+  qty: number;
+  unitPrice: number | null;
+  addonPrice: number | null;
+  total: number | null;
+  reason: string | null;
+}
+
+// --------------------------------------------------------------------------
+// service_catalog — listino servizi dello studio (prezzo NULL = su richiesta)
+// --------------------------------------------------------------------------
+export const serviceCatalog = pgTable(
+  "service_catalog",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    category: text("category").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    /** NULL = "su richiesta" */
+    price: numeric("price", { precision: 12, scale: 2 }),
+    durationMinutes: integer("duration_minutes"),
+    /** Tipo di appuntamento collegato (FK composita; ON DELETE SET NULL (colonna) nella migration) */
+    appointmentTypeId: uuid("appointment_type_id"),
+    /** Chiave di inventory_item_types: il servizio si somma una volta al preventivo di un articolo di quel tipo */
+    addonForItemType: text("addon_for_item_type"),
+    /** Mostrato nel catalogo pubblico del portale */
+    isPublic: boolean("public").notNull().default(true),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("service_catalog_company_key_unique").on(table.companyId, table.key),
+    unique("service_catalog_id_company_id_key").on(table.id, table.companyId),
+    foreignKey({
+      name: "service_catalog_appointment_type_fkey",
+      columns: [table.appointmentTypeId, table.companyId],
+      foreignColumns: [companyAppointmentTypes.id, companyAppointmentTypes.companyId],
+    }),
+    foreignKey({
+      name: "service_catalog_addon_type_fkey",
+      columns: [table.companyId, table.addonForItemType],
+      foreignColumns: [inventoryItemTypes.companyId, inventoryItemTypes.key],
+    }),
+    index("idx_service_catalog_company").on(table.companyId, table.position),
+    index("idx_service_catalog_appointment_type")
+      .on(table.appointmentTypeId)
+      .where(sql`${table.appointmentTypeId} IS NOT NULL`),
+    index("idx_service_catalog_addon")
+      .on(table.companyId, table.addonForItemType)
+      .where(sql`${table.addonForItemType} IS NOT NULL`),
+    check("service_catalog_key_format", sql`${table.key} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check("service_catalog_category_format", sql`${table.category} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check(
+      "service_catalog_addon_format",
+      sql`${table.addonForItemType} IS NULL OR ${table.addonForItemType} ~ '^[a-z][a-z0-9_]{0,62}$'`
+    ),
+    check("service_catalog_title_length", sql`char_length(${table.title}) BETWEEN 1 AND 120`),
+    check("service_catalog_description_length", sql`char_length(${table.description}) <= 500`),
+    check("service_catalog_price_nonneg", sql`${table.price} IS NULL OR ${table.price} >= 0`),
+    check(
+      "service_catalog_duration_range",
+      sql`${table.durationMinutes} IS NULL OR ${table.durationMinutes} BETWEEN 5 AND 600`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// service_requests — richieste dei clienti (app o desk). Il preventivo automatico è calcolato dal DB.
+// --------------------------------------------------------------------------
+export const serviceRequests = pgTable(
+  "service_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    /** Bene del cliente (nullable) */
+    assetId: uuid("asset_id"),
+    kind: text("kind").$type<ServiceRequestKind>().notNull(),
+    status: text("status").$type<ServiceRequestStatus>().notNull().default("new"),
+    item: jsonb("item").$type<ServiceRequestItem>(),
+    /** Messaggio libero del cliente (nullable, max 1000 caratteri) */
+    message: text("message"),
+    preferredDate: date("preferred_date", { mode: "string" }),
+    autoQuote: jsonb("auto_quote").$type<AutoQuote>(),
+    /** Preventivo generato dalla richiesta (FK composita nullable; ON DELETE SET NULL (colonna) nella migration) */
+    quoteId: uuid("quote_id"),
+    /** Appuntamento generato dalla richiesta (FK composita nullable; ON DELETE SET NULL (colonna) nella migration) */
+    appointmentId: uuid("appointment_id"),
+    source: text("source").$type<ServiceRequestSource>().notNull().default("desk"),
+    handledBy: uuid("handled_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("service_requests_id_company_id_key").on(table.id, table.companyId),
+    foreignKey({
+      name: "service_requests_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "service_requests_asset_fkey",
+      columns: [table.assetId, table.companyId],
+      foreignColumns: [clientAssets.id, clientAssets.companyId],
+    }),
+    foreignKey({
+      name: "service_requests_quote_fkey",
+      columns: [table.quoteId, table.companyId],
+      foreignColumns: [quotes.id, quotes.companyId],
+    }),
+    foreignKey({
+      name: "service_requests_appointment_fkey",
+      columns: [table.appointmentId, table.companyId],
+      foreignColumns: [calendarEvents.id, calendarEvents.companyId],
+    }),
+    index("idx_service_requests_company_status").on(table.companyId, table.status, table.createdAt.desc()),
+    index("idx_service_requests_client").on(table.companyId, table.clientId),
+    index("idx_service_requests_asset")
+      .on(table.companyId, table.assetId)
+      .where(sql`${table.assetId} IS NOT NULL`),
+    index("idx_service_requests_quote")
+      .on(table.companyId, table.quoteId)
+      .where(sql`${table.quoteId} IS NOT NULL`),
+    index("idx_service_requests_appointment")
+      .on(table.companyId, table.appointmentId)
+      .where(sql`${table.appointmentId} IS NOT NULL`),
+    index("idx_service_requests_handled_by")
+      .on(table.handledBy)
+      .where(sql`${table.handledBy} IS NOT NULL`),
+    check("service_requests_kind_check", sql`${table.kind} IN ('quote', 'appointment', 'info')`),
+    check(
+      "service_requests_status_check",
+      sql`${table.status} IN ('new', 'auto_quoted', 'quoted', 'confirmed', 'declined', 'closed')`
+    ),
+    check("service_requests_source_check", sql`${table.source} IN ('portal', 'desk')`),
+    check(
+      "service_requests_item_object",
+      sql`${table.item} IS NULL OR jsonb_typeof(${table.item}) = 'object'`
+    ),
+    check(
+      "service_requests_item_source",
+      sql`${table.item} IS NULL OR coalesce(${table.item} ->> 'source', '') IN ('service', 'inventory')`
+    ),
+    check(
+      "service_requests_auto_quote_object",
+      sql`${table.autoQuote} IS NULL OR jsonb_typeof(${table.autoQuote}) = 'object'`
+    ),
+    check("service_requests_message_length", sql`${table.message} IS NULL OR char_length(${table.message}) <= 1000`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// work_orders — ordini di lavoro (officina, gommista, autolavaggio…) con stato live.
+// started_at = primo in_progress; ready_at / delivered_at = ingresso nello stato (derivati, trigger).
+// --------------------------------------------------------------------------
+export const workOrders = pgTable(
+  "work_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    /** Bene del cliente (nullable) */
+    assetId: uuid("asset_id"),
+    /** Richiesta di origine (FK composita nullable) */
+    requestId: uuid("request_id"),
+    /** Appuntamento collegato (FK composita nullable) */
+    appointmentId: uuid("appointment_id"),
+    title: text("title").notNull(),
+    status: text("status").$type<WorkOrderStatus>().notNull().default("waiting"),
+    /** Campi di settore con entity = 'work_order' (es. km) */
+    attributes: jsonb("attributes").$type<ClientAttributes>().notNull().default({}),
+    /** Articolo di magazzino usato (FK composita nullable) */
+    inventoryItemId: uuid("inventory_item_id"),
+    itemQty: integer("item_qty"),
+    /** Note interne (nullable, max 2000 caratteri) */
+    notes: text("notes"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("work_orders_id_company_id_key").on(table.id, table.companyId),
+    foreignKey({
+      name: "work_orders_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "work_orders_asset_fkey",
+      columns: [table.assetId, table.companyId],
+      foreignColumns: [clientAssets.id, clientAssets.companyId],
+    }),
+    foreignKey({
+      name: "work_orders_request_fkey",
+      columns: [table.requestId, table.companyId],
+      foreignColumns: [serviceRequests.id, serviceRequests.companyId],
+    }),
+    foreignKey({
+      name: "work_orders_appointment_fkey",
+      columns: [table.appointmentId, table.companyId],
+      foreignColumns: [calendarEvents.id, calendarEvents.companyId],
+    }),
+    foreignKey({
+      name: "work_orders_item_fkey",
+      columns: [table.inventoryItemId, table.companyId],
+      foreignColumns: [inventoryItems.id, inventoryItems.companyId],
+    }),
+    index("idx_work_orders_company_status").on(table.companyId, table.status),
+    index("idx_work_orders_client").on(table.companyId, table.clientId),
+    index("idx_work_orders_asset")
+      .on(table.companyId, table.assetId)
+      .where(sql`${table.assetId} IS NOT NULL`),
+    index("idx_work_orders_request")
+      .on(table.companyId, table.requestId)
+      .where(sql`${table.requestId} IS NOT NULL`),
+    index("idx_work_orders_appointment")
+      .on(table.companyId, table.appointmentId)
+      .where(sql`${table.appointmentId} IS NOT NULL`),
+    index("idx_work_orders_item")
+      .on(table.companyId, table.inventoryItemId)
+      .where(sql`${table.inventoryItemId} IS NOT NULL`),
+    index("idx_work_orders_created_by").on(table.createdBy),
+    check(
+      "work_orders_status_check",
+      sql`${table.status} IN ('waiting', 'in_progress', 'ready', 'delivered')`
+    ),
+    check("work_orders_title_length", sql`char_length(${table.title}) BETWEEN 1 AND 200`),
+    check("work_orders_attributes_object", sql`jsonb_typeof(${table.attributes}) = 'object'`),
+    check("work_orders_item_qty_positive", sql`${table.itemQty} IS NULL OR ${table.itemQty} > 0`),
+    check("work_orders_notes_length", sql`${table.notes} IS NULL OR char_length(${table.notes}) <= 2000`),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// work_order_events — storico degli stati, append-only (scritto solo dal trigger)
+// --------------------------------------------------------------------------
+export const workOrderEvents = pgTable(
+  "work_order_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    workOrderId: uuid("work_order_id").notNull(),
+    fromStatus: text("from_status").$type<WorkOrderStatus>(),
+    toStatus: text("to_status").$type<WorkOrderStatus>().notNull(),
+    changedBy: uuid("changed_by").references(() => authUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "work_order_events_work_order_fkey",
+      columns: [table.workOrderId, table.companyId],
+      foreignColumns: [workOrders.id, workOrders.companyId],
+    }).onDelete("cascade"),
+    index("idx_work_order_events_order").on(table.workOrderId, table.createdAt),
+    index("idx_work_order_events_company").on(table.companyId),
+    index("idx_work_order_events_changed_by").on(table.changedBy),
+    check(
+      "work_order_events_from_check",
+      sql`${table.fromStatus} IS NULL OR ${table.fromStatus} IN ('waiting', 'in_progress', 'ready', 'delivered')`
+    ),
+    check(
+      "work_order_events_to_check",
+      sql`${table.toStatus} IN ('waiting', 'in_progress', 'ready', 'delivered')`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// client_accounts — utente finale collegato a una scheda cliente di uno studio.
+// Un utente può essere cliente di più studi. Scritture solo via RPC.
+// --------------------------------------------------------------------------
+export const clientAccounts = pgTable(
+  "client_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Revoca (null = collegamento attivo) */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("client_accounts_company_id_user_id_key").on(table.companyId, table.userId),
+    foreignKey({
+      name: "client_accounts_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    index("idx_client_accounts_user")
+      .on(table.userId)
+      .where(sql`${table.revokedAt} IS NULL`),
+    index("idx_client_accounts_client").on(table.companyId, table.clientId),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// customer_notifications — notifiche in-app per il cliente finale (polling)
+// --------------------------------------------------------------------------
+export const customerNotifications = pgTable(
+  "customer_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    kind: text("kind").$type<CustomerNotificationKind>().notNull(),
+    title: text("title").notNull(),
+    /** Testo (nullable, max 1000 caratteri) */
+    body: text("body"),
+    /** Link interno: solo percorsi relativi che iniziano con "/" */
+    link: text("link"),
+    /** Chiave di deduplica (es. "work_order:<id>:<status>"); NULL = nessuna deduplica */
+    dedupeKey: text("dedupe_key"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("customer_notifications_dedupe_unique").on(table.companyId, table.clientId, table.dedupeKey),
+    foreignKey({
+      name: "customer_notifications_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    index("idx_customer_notifications_client").on(table.companyId, table.clientId, table.createdAt.desc()),
+    check(
+      "customer_notifications_kind_check",
+      sql`${table.kind} IN ('status', 'reminder', 'recall', 'quote', 'request', 'info')`
+    ),
+    check("customer_notifications_title_length", sql`char_length(${table.title}) BETWEEN 1 AND 160`),
+    check(
+      "customer_notifications_body_length",
+      sql`${table.body} IS NULL OR char_length(${table.body}) <= 1000`
+    ),
+    check(
+      "customer_notifications_link_format",
+      sql`${table.link} IS NULL OR (${table.link} LIKE '/%' AND ${table.link} NOT LIKE '//%' AND char_length(${table.link}) <= 500)`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// client_documents — documenti di cliente o bene. Il file sta nel bucket privato client-documents.
+// --------------------------------------------------------------------------
+export const clientDocuments = pgTable(
+  "client_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    /** Bene a cui si riferisce il documento (nullable) */
+    assetId: uuid("asset_id"),
+    /** Chiave del tipo di documento (es. 'libretto'), nel formato delle chiavi */
+    kind: text("kind").notNull(),
+    /** Percorso nel bucket: deve iniziare con `<company_id>/<client_id>/` */
+    storagePath: text("storage_path").notNull(),
+    mimeType: text("mime_type").notNull(),
+    /** 1 byte … 10 MB */
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedBy: uuid("uploaded_by")
+      .references(() => authUsers.id, { onDelete: "set null" })
+      .default(sql`auth.uid()`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("client_documents_storage_path_key").on(table.storagePath),
+    foreignKey({
+      name: "client_documents_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "client_documents_asset_fkey",
+      columns: [table.assetId, table.companyId],
+      foreignColumns: [clientAssets.id, clientAssets.companyId],
+    }),
+    index("idx_client_documents_client").on(table.companyId, table.clientId),
+    index("idx_client_documents_asset")
+      .on(table.companyId, table.assetId)
+      .where(sql`${table.assetId} IS NOT NULL`),
+    index("idx_client_documents_uploaded_by").on(table.uploadedBy),
+    check("client_documents_kind_format", sql`${table.kind} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check(
+      "client_documents_mime_check",
+      sql`${table.mimeType} IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf')`
+    ),
+    check("client_documents_size_check", sql`${table.sizeBytes} BETWEEN 1 AND 10485760`),
+    check(
+      "client_documents_path_prefix",
+      sql`starts_with(${table.storagePath}, ${table.companyId}::text || '/' || ${table.clientId}::text || '/')`
+    ),
+  ]
+);
+
+// --------------------------------------------------------------------------
+// recall_log — registro dei richiami inviati (anti-duplicati). Le regole di kind stanno nel data layer.
+// --------------------------------------------------------------------------
+export const recallLog = pgTable(
+  "recall_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    assetId: uuid("asset_id"),
+    kind: text("kind").notNull(),
+    /** Periodo del richiamo (es. "2026-S1"): con kind, cliente e canale è unico */
+    periodKey: text("period_key").notNull(),
+    channel: text("channel").$type<RecallChannel>().notNull(),
+    sentBy: uuid("sent_by").references(() => authUsers.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("recall_log_unique").on(table.companyId, table.clientId, table.kind, table.periodKey, table.channel),
+    foreignKey({
+      name: "recall_log_client_fkey",
+      columns: [table.clientId, table.companyId],
+      foreignColumns: [clients.id, clients.companyId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "recall_log_asset_fkey",
+      columns: [table.assetId, table.companyId],
+      foreignColumns: [clientAssets.id, clientAssets.companyId],
+    }),
+    index("idx_recall_log_sent_by").on(table.sentBy),
+    index("idx_recall_log_asset")
+      .on(table.companyId, table.assetId)
+      .where(sql`${table.assetId} IS NOT NULL`),
+    check("recall_log_kind_format", sql`${table.kind} ~ '^[a-z][a-z0-9_]{0,62}$'`),
+    check("recall_log_channel_check", sql`${table.channel} IN ('whatsapp', 'in_app', 'email', 'sms')`),
+    check("recall_log_period_length", sql`char_length(${table.periodKey}) BETWEEN 1 AND 120`),
+  ]
+);
+
+// ============================================================================
 // TYPE EXPORTS — Use these instead of supabase.ts types
 // ============================================================================
 export type Company = typeof companies.$inferSelect;
@@ -923,3 +1434,19 @@ export type NewInventoryItemRow = typeof inventoryItems.$inferInsert;
 export type InventoryMovementRow = typeof inventoryMovements.$inferSelect;
 export type NewInventoryMovementRow = typeof inventoryMovements.$inferInsert;
 export type InventoryStockRow = typeof inventoryStock.$inferSelect;
+
+export type ServiceCatalogRow = typeof serviceCatalog.$inferSelect;
+export type NewServiceCatalogRow = typeof serviceCatalog.$inferInsert;
+export type ServiceRequestRow = typeof serviceRequests.$inferSelect;
+export type NewServiceRequestRow = typeof serviceRequests.$inferInsert;
+export type WorkOrderRow = typeof workOrders.$inferSelect;
+export type NewWorkOrderRow = typeof workOrders.$inferInsert;
+export type WorkOrderEventRow = typeof workOrderEvents.$inferSelect;
+export type ClientAccountRow = typeof clientAccounts.$inferSelect;
+export type NewClientAccountRow = typeof clientAccounts.$inferInsert;
+export type CustomerNotificationRow = typeof customerNotifications.$inferSelect;
+export type NewCustomerNotificationRow = typeof customerNotifications.$inferInsert;
+export type ClientDocumentRow = typeof clientDocuments.$inferSelect;
+export type NewClientDocumentRow = typeof clientDocuments.$inferInsert;
+export type RecallLogRow = typeof recallLog.$inferSelect;
+export type NewRecallLogRow = typeof recallLog.$inferInsert;

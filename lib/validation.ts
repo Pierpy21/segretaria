@@ -245,6 +245,7 @@ export function parseEntityParam(value: string | null): FieldEntity {
   if (value === null || value === "" || value === "client") return "client";
   if (value === "asset") return "asset";
   if (value === "item") return "item";
+  if (value === "work_order") return "work_order";
   throw new ValidationError("Entità non valida");
 }
 
@@ -421,11 +422,20 @@ function optEmail(obj: JsonObject, key: string): string | undefined {
   return v;
 }
 
-function parseBirthDate(obj: JsonObject, key: string): string {
+/** Data di nascita facoltativa (persone giuridiche, clienti registrati dall'app): assente, null o vuota → null. */
+function optBirthDate(obj: JsonObject, key: string): string | null {
   const v = obj[key];
-  if (typeof v !== "string" || !v.trim()) throw new ValidationError("Data di nascita obbligatoria");
-  if (!parseDateInput(v)) throw new ValidationError("Data di nascita non valida (es. 14 giugno 1995 o 1995-06-14)");
+  if (isBlank(v) || (typeof v === "string" && !v.trim())) return null;
+  if (typeof v !== "string" || !parseDateInput(v)) {
+    throw new ValidationError("Data di nascita non valida (es. 14 giugno 1995 o 1995-06-14)");
+  }
   return v.trim();
+}
+
+/** Sesso facoltativo: assente, null o stringa vuota → null. */
+function optGender(obj: JsonObject): "F" | "M" | null {
+  if (obj.gender === "") return null;
+  return optEnum(obj, "gender", GENDERS, "Sesso") ?? null;
 }
 
 /** Oggetti annidati: solo campi stringa noti; mancanti → "". */
@@ -476,8 +486,8 @@ function clientFields(body: JsonObject, required: boolean): Partial<CreateClient
     out.attributes = asOptionalRecord(body.attributes, "Attributi") as ClientAttributes;
   }
   if (required || body.name !== undefined) out.name = reqString(body, "name", "Nome", 200);
-  if (required || body.gender !== undefined) out.gender = reqEnum(body, "gender", GENDERS, "Sesso");
-  if (required || body.dateOfBirth !== undefined) out.dateOfBirth = parseBirthDate(body, "dateOfBirth");
+  if (required || body.gender !== undefined) out.gender = optGender(body);
+  if (required || body.dateOfBirth !== undefined) out.dateOfBirth = optBirthDate(body, "dateOfBirth");
   if (body.avatar !== undefined) out.avatar = optString(body, "avatar", "Avatar", 500) ?? "";
   if (body.phone !== undefined) out.phone = optString(body, "phone", "Telefono", 50) ?? "";
   if (body.email !== undefined) out.email = optEmail(body, "email") ?? "";

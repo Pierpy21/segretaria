@@ -32,8 +32,9 @@ import type { ClientAttributes, ClientResponse, CreateClientInput, Sector } from
 
 interface ClientForm {
   name: string;
-  gender: "F" | "M";
-  dateOfBirth: string; // YYYY-MM-DD dal input date
+  /** "" = non indicato */
+  gender: "" | "F" | "M";
+  dateOfBirth: string; // YYYY-MM-DD dal input date, "" = non indicata
   phone: string;
   email: string;
   address: string;
@@ -44,7 +45,7 @@ interface ClientForm {
 
 const EMPTY_FORM: ClientForm = {
   name: "",
-  gender: "F",
+  gender: "",
   dateOfBirth: "",
   phone: "",
   email: "",
@@ -72,9 +73,9 @@ function formatBirthDate(iso: string): string {
 function buildNewClient(f: ClientForm): CreateClientInput {
   return {
     name: f.name.trim(),
-    gender: f.gender,
+    gender: f.gender || null,
     avatar: "",
-    dateOfBirth: formatBirthDate(f.dateOfBirth),
+    dateOfBirth: f.dateOfBirth ? formatBirthDate(f.dateOfBirth) : null,
     phone: f.phone.trim(),
     email: f.email.trim(),
     address: f.address.trim(),
@@ -252,10 +253,6 @@ export default function ClientsPage() {
       setFormError("Inserisci nome e cognome.");
       return;
     }
-    if (!form.dateOfBirth) {
-      setFormError("Inserisci la data di nascita.");
-      return;
-    }
     setFormError(null);
     setSubmitting(true);
     try {
@@ -308,9 +305,10 @@ export default function ClientsPage() {
             <select
               id="c-gender"
               value={form.gender}
-              onChange={e => setForm({ ...form, gender: e.target.value as "F" | "M" })}
+              onChange={e => setForm({ ...form, gender: e.target.value as "" | "F" | "M" })}
               className={INPUT_CLASS}
             >
+              <option value="">Non indicato</option>
               <option value="F">Femmina</option>
               <option value="M">Maschio</option>
             </select>
@@ -525,7 +523,7 @@ export default function ClientsPage() {
                     <ClientAvatar client={c} className="w-10 h-10 border border-line" />
                     <div>
                       <p className="font-bold text-ink text-sm leading-tight">{c.name}</p>
-                      <p className="text-[11px] text-ink-muted">{c.id} · {c.dateOfBirth}</p>
+                      <p className="text-[11px] text-ink-muted">{[c.id, c.dateOfBirth].filter(Boolean).join(" · ")}</p>
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-lg text-xs font-bold text-accent-text bg-accent/10">
@@ -576,7 +574,7 @@ export default function ClientsPage() {
                     </td>
                     <td className="px-5 py-3.5 font-bold text-ink">{c.id}</td>
                     <td className="px-5 py-3.5 text-ink">
-                      {c.dateOfBirth} ({c.age} anni)
+                      {c.dateOfBirth ? `${c.dateOfBirth}${c.age !== null ? ` (${c.age} anni)` : ""}` : "Non indicata"}
                     </td>
                     <td className="px-5 py-3.5">
                       <p className="font-semibold text-ink">{c.phone}</p>
@@ -646,9 +644,11 @@ export default function ClientsPage() {
               <div className="flex items-center gap-3 mb-3">
                 <div className="relative">
                   <ClientAvatar client={currentClient} className="w-12 h-12 border-2 border-line" />
-                  <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-accent border-2 border-surface flex items-center justify-center text-[9px] font-bold text-accent-ink">
-                    {currentClient.gender === "F" ? "♀" : "♂"}
-                  </span>
+                  {currentClient.gender && (
+                    <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-accent border-2 border-surface flex items-center justify-center text-[9px] font-bold text-accent-ink">
+                      {currentClient.gender === "F" ? "♀" : "♂"}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-ink leading-tight">{currentClient.name}</h3>
@@ -673,7 +673,7 @@ export default function ClientsPage() {
                       <Calendar size={12} className="text-amber-600" />
                       <span>Date of birth</span>
                     </div>
-                    <p className="text-xs font-bold text-ink">{currentClient.dateOfBirth}</p>
+                    <p className="text-xs font-bold text-ink">{currentClient.dateOfBirth ?? "Non indicata"}</p>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 text-ink-muted text-[11px] font-semibold mb-1">

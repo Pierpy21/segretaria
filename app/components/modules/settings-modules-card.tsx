@@ -26,6 +26,10 @@ function moduleCopy(t: Terms): Record<ModuleKey, { label: string; description: s
     assets: { label: "Beni dei clienti", description: "Veicoli, animali, immobili o altri beni collegati ai clienti." },
     ai_assistant: { label: "Assistente AI", description: "Bozze automatiche e risposte suggerite." },
     inventory: { label: "Magazzino", description: "Articoli, giacenze, lotti e scadenze." },
+    work_orders: { label: t.workOrdersLabel, description: "Ordini di lavoro con lo stato aggiornato in tempo reale." },
+    requests: { label: "Richieste e listino", description: "Listino servizi e richieste dei clienti, con preventivo automatico." },
+    customer_portal: { label: "Portale clienti", description: "Account e app dei clienti, con notifiche in-app." },
+    recalls: { label: "Richiami", description: "Registro dei richiami inviati ai clienti, per evitare doppi invii." },
   };
 }
 

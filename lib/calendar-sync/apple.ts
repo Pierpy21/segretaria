@@ -107,8 +107,9 @@ export function decodeXml(s: string): string {
 
 /** Contenuto (non self-closing) del primo elemento con quel nome locale. */
 function innerOf(xml: string, localName: string): string | undefined {
+  const escapedName = localName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(
-    `<(?:\\w+:)?${localName}(?:\\s[^>]*[^/>])?>([\\s\\S]*?)</(?:\\w+:)?${localName}>`,
+    `<(?:\\w+:)?${escapedName}(?:\\s[^>]*[^/>])?>([\\s\\S]*?)</(?:\\w+:)?${escapedName}>`,
   );
   const m = re.exec(xml);
   return m ? m[1] : undefined;

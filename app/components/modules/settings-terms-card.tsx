@@ -67,6 +67,16 @@ const TERM_GROUPS: TermGroup[] = [
     ],
   },
   {
+    title: "Ordini di lavoro",
+    fields: [
+      { key: "workOrdersLabel", label: "Nome della sezione" },
+      { key: "workOrderStatusWaiting", label: "Stato: in attesa" },
+      { key: "workOrderStatusInProgress", label: "Stato: in lavorazione" },
+      { key: "workOrderStatusReady", label: "Stato: pronto" },
+      { key: "workOrderStatusDelivered", label: "Stato: consegnato" },
+    ],
+  },
+  {
     title: "Stati dei preventivi",
     fields: [
       { key: "statusPendingAi", label: "Bozza generata dall'AI" },

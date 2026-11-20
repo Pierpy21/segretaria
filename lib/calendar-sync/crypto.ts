@@ -7,6 +7,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 const ALGORITHM = "aes-256-gcm";
 const VERSION = "v1";
 const IV_BYTES = 12;
+const TAG_BYTES = 16;
 
 let cachedKey: Buffer | undefined;
 
@@ -24,19 +25,30 @@ function getKey(): Buffer {
 
 export function encryptSecret(plaintext: string): string {
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGORITHM, getKey(), iv);
+  const cipher = createCipheriv(ALGORITHM, getKey(), iv, { authTagLength: TAG_BYTES });
   const data = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [VERSION, iv.toString("base64"), tag.toString("base64"), data.toString("base64")].join(":");
 }
 
 export function decryptSecret(payload: string): string {
-  const [version, ivB64, tagB64, dataB64] = payload.split(":");
+  // Rifiuta payload con parti extra
+  const parts = payload.split(":");
+  if (parts.length > 4) {
+    throw new Error("Payload cifrato del calendario non valido");
+  }
+  const [version, ivB64, tagB64, dataB64] = parts;
   if (version !== VERSION || !ivB64 || !tagB64 || !dataB64) {
     throw new Error("Payload cifrato del calendario non valido");
   }
-  const decipher = createDecipheriv(ALGORITHM, getKey(), Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  const iv = Buffer.from(ivB64, "base64");
+  const tag = Buffer.from(tagB64, "base64");
+  // Impedisce tag GCM troncati
+  if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+    throw new Error("Payload cifrato del calendario non valido");
+  }
+  const decipher = createDecipheriv(ALGORITHM, getKey(), iv, { authTagLength: TAG_BYTES });
+  decipher.setAuthTag(tag);
   const plain = Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]);
   return plain.toString("utf8");
 }
